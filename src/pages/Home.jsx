@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useNavigate } from "react-router-dom";
 import '../style/HomeCSS.css';
 import NavBar from '../components/NavBar.jsx';
 const Home = () => {
@@ -9,6 +10,7 @@ const Home = () => {
   const [cameraName, setCameraName] = useState("");
   const [stream, setStream] = useState(null);
   const videoRef = useRef(null);
+  const navigate = useNavigate();
   // Open modal & preview webcam
   const openCameraModal = async () => {
     setShowCameraModal(true);
@@ -49,12 +51,12 @@ const Home = () => {
     }
 
     alert("Camera added successfully!");
-
+    
     // Reset modal state
     setShowCameraModal(false);
     setCameraId("");
     setCameraName("");
-
+    navigate("/stream")
     if (stream) {
       stream.getTracks().forEach((t) => t.stop());
     }
@@ -66,7 +68,7 @@ const Home = () => {
 };
 
 
-  const closeModal = () => {21
+  const closeModal = () => {
     setShowCameraModal(false);
     if (stream) stream.getTracks().forEach((t) => t.stop());
   };

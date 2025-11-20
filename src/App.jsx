@@ -5,7 +5,7 @@ import Contact from "./pages/Contact";
 import Signup from "./pages/Signup";
 import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
-
+import StreamCamera from "./pages/StreamCamera";
 export default function App() {
   return (
     <Routes>
@@ -15,6 +15,7 @@ export default function App() {
       <Route path="/signup" element={<Signup />} />
       <Route path="/login" element={<Login />} />
       <Route path="/dashboard" element={<Dashboard />} />
+      <Route path="/stream" element={<StreamCamera />} />
     </Routes>
   );
 }

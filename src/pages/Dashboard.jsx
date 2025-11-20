@@ -8,19 +8,22 @@ export default function Dashboard() {
   const [error, setError] = useState(null);
   const [safeLogs, setSafeLogs] = useState([]);
   const [threatLogs, setThreatLogs] = useState([]);
+  const [isStreaming, setIsStreaming] = useState({});
 
   const videoRefs = useRef({});
   const streams = useRef({});
+  const detectionIntervals = useRef({});
+  const mountedRef = useRef(true);
 
-  // Fetch cameras from backend API
+  // Fetch cameras from backend API (REDUCED FREQUENCY)
   useEffect(() => {
     const fetchCameras = async () => {
       try {
-        setLoading(true);
+        if (!mountedRef.current) return;
+        
         console.log("Fetching cameras from backend...");
         
         const response = await fetch("https://hawkshield-backend-6.onrender.com/api/cameras/");
-        console.log("Response status:", response.status);
         
         if (!response.ok) {
           throw new Error(`HTTP error! status: ${response.status}`);
@@ -29,78 +32,139 @@ export default function Dashboard() {
         const data = await response.json();
         console.log("Received cameras:", data);
         
-        // Backend returns {cameras: [...]}
         const camerasArray = data.cameras || [];
         
-        setCameras(camerasArray);
-        setError(null);
+        if (mountedRef.current) {
+          setCameras(camerasArray);
+          setError(null);
+        }
       } catch (error) {
         console.error("Error fetching cameras:", error);
-        setError(error.message);
+        if (mountedRef.current) {
+          setError(error.message);
+        }
       } finally {
-        setLoading(false);
+        if (mountedRef.current) {
+          setLoading(false);
+        }
       }
     };
 
     fetchCameras();
     
-    // Optional: Refresh cameras every 10 seconds
-    const interval = setInterval(fetchCameras, 10000);
-    return () => clearInterval(interval);
+    // INCREASED INTERVAL: Refresh cameras every 30 seconds instead of 10
+    const interval = setInterval(fetchCameras, 30000);
+    
+    return () => {
+      clearInterval(interval);
+      mountedRef.current = false;
+    };
   }, []);
 
-  // Start webcam stream for each camera
+  // Start webcam stream ONLY for cameras that belong to THIS device
   useEffect(() => {
-    cameras.forEach(async (cam) => {
-      const camId = cam.cameraId || cam.id;
-      
-      if (!streams.current[camId]) {
-        try {
-          const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-          streams.current[camId] = stream;
+    const startLocalStreams = async () => {
+      for (const cam of cameras) {
+        const camId = cam.cameraId || cam.id;
+        
+        // Check if this camera should stream from THIS device
+        // You can add a field like "sourceDeviceId" to identify which device owns this camera
+        const shouldStreamLocally = cam.sourceDeviceId === getDeviceId() || !cam.hasRemoteStream;
+        
+        if (shouldStreamLocally && !streams.current[camId]) {
+          try {
+            const stream = await navigator.mediaDevices.getUserMedia({ 
+              video: { width: 1280, height: 720 } 
+            });
+            
+            if (!mountedRef.current) {
+              stream.getTracks().forEach(track => track.stop());
+              return;
+            }
+            
+            streams.current[camId] = stream;
+            setIsStreaming(prev => ({ ...prev, [camId]: true }));
 
-          if (videoRefs.current[camId]) {
-            videoRefs.current[camId].srcObject = stream;
+            if (videoRefs.current[camId]) {
+              videoRefs.current[camId].srcObject = stream;
+            }
+
+            // Start streaming to backend
+            startStreamingToBackend(camId, stream);
+            
+          } catch (e) {
+            console.error("Camera access error:", e);
+            setIsStreaming(prev => ({ ...prev, [camId]: false }));
           }
-        } catch (e) {
-          console.log("Camera access error:", e);
         }
       }
-    });
+    };
+
+    startLocalStreams();
 
     // Cleanup function
     return () => {
-      Object.values(streams.current).forEach(stream => {
+      Object.entries(streams.current).forEach(([camId, stream]) => {
         stream.getTracks().forEach(track => track.stop());
+        if (detectionIntervals.current[camId]) {
+          clearInterval(detectionIntervals.current[camId]);
+        }
       });
+      streams.current = {};
+      detectionIntervals.current = {};
     };
   }, [cameras]);
 
+  // Get unique device ID (stored in localStorage)
+  const getDeviceId = () => {
+    let deviceId = localStorage.getItem('deviceId');
+    if (!deviceId) {
+      deviceId = 'device_' + Math.random().toString(36).substr(2, 9);
+      localStorage.setItem('deviceId', deviceId);
+    }
+    return deviceId;
+  };
+
+  // Stream video to backend for remote viewing
+  const startStreamingToBackend = (camId, stream) => {
+    // Start detection interval for THIS camera only
+    if (detectionIntervals.current[camId]) {
+      clearInterval(detectionIntervals.current[camId]);
+    }
+
+    detectionIntervals.current[camId] = setInterval(() => {
+      if (mountedRef.current && streams.current[camId]) {
+        sendForDetection(camId);
+      }
+    }, 5000); // INCREASED: Detection every 5 seconds instead of 4
+  };
+
   const captureFrame = (camId) => {
     const video = videoRefs.current[camId];
-    if (!video) return null;
+    if (!video || video.readyState !== 4) return null;
 
     const canvas = document.createElement("canvas");
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
+    canvas.width = video.videoWidth || 640;
+    canvas.height = video.videoHeight || 480;
 
     const ctx = canvas.getContext("2d");
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
     return new Promise((resolve) => {
-      canvas.toBlob((blob) => resolve(blob), "image/jpeg");
+      canvas.toBlob((blob) => resolve(blob), "image/jpeg", 0.8);
     });
   };
 
-  const sendForDetection = async (cam) => {
-    const camId = cam.cameraId;
-    const camName = cam.cameraName;
+  const sendForDetection = async (camId) => {
+    const cam = cameras.find(c => (c.cameraId || c.id) === camId);
+    if (!cam) return;
 
     const frame = await captureFrame(camId);
     if (!frame) return;
 
     const formData = new FormData();
     formData.append("image", frame, "frame.jpg");
+    formData.append("cameraId", camId);
 
     try {
       const res = await fetch("https://hawkshield-backend-6.onrender.com/api/detection/threats/", {
@@ -108,36 +172,31 @@ export default function Dashboard() {
         body: formData
       });
 
+      if (!res.ok) throw new Error(`Detection failed: ${res.status}`);
+
       const data = await res.json();
 
       const hasThreat =
-        data.knife.length > 0 ||
-        data.gun.length > 0 ||
-        data.mask?.length > 0 ||
-        data.emotion?.length > 0;
+        (data.knife?.length || 0) > 0 ||
+        (data.gun?.length || 0) > 0 ||
+        (data.mask?.length || 0) > 0 ||
+        (data.emotion?.length || 0) > 0;
 
       const timestamp = new Date().toLocaleTimeString();
+      const camName = cam.cameraName || cam.name || "Unknown";
       const logEntry = `[${timestamp}] ${camId} | ${camName} - ${hasThreat ? "⚠️ Threat detected" : "✓ Safe"}`;
 
-      if (hasThreat) {
-        setThreatLogs((prev) => [...prev.slice(-20), logEntry]);
-      } else {
-        setSafeLogs((prev) => [...prev.slice(-20), logEntry]);
+      if (mountedRef.current) {
+        if (hasThreat) {
+          setThreatLogs((prev) => [...prev.slice(-20), logEntry]);
+        } else {
+          setSafeLogs((prev) => [...prev.slice(-20), logEntry]);
+        }
       }
     } catch (err) {
-      console.log("Detection error:", err);
+      console.error("Detection error:", err);
     }
   };
-
-  useEffect(() => {
-    const interval = setInterval(() => {
-      cameras.forEach((cam) => {
-        sendForDetection(cam);
-      });
-    }, 4000);
-
-    return () => clearInterval(interval);
-  }, [cameras]);
 
   // REMOVE CAMERA FUNCTION
   const removeCamera = async (cameraId) => {
@@ -153,6 +212,12 @@ export default function Dashboard() {
         if (streams.current[cameraId]) {
           streams.current[cameraId].getTracks().forEach((t) => t.stop());
           delete streams.current[cameraId];
+        }
+
+        // Stop detection interval
+        if (detectionIntervals.current[cameraId]) {
+          clearInterval(detectionIntervals.current[cameraId]);
+          delete detectionIntervals.current[cameraId];
         }
 
         // Remove camera from list
@@ -185,7 +250,7 @@ export default function Dashboard() {
       {error && (
         <div className="error-state">
           <strong>⚠️ Error loading cameras:</strong> {error}
-          <small>Make sure your backend is running on http://127.0.0.1:8000</small>
+          <small>Make sure your backend is running properly</small>
         </div>
       )}
 
@@ -236,6 +301,9 @@ export default function Dashboard() {
                     <h3>{camName}</h3>
                     <div className="camera-stats">
                       <span className="stat-badge">ID: {camId}</span>
+                      {isStreaming[camId] && (
+                        <span className="stat-badge live">🔴 LIVE</span>
+                      )}
                       {cam.people !== undefined && (
                         <span className="stat-badge">👥 {cam.people}</span>
                       )}
@@ -259,6 +327,12 @@ export default function Dashboard() {
                   muted
                   className="camera-video"
                 ></video>
+                
+                {!isStreaming[camId] && (
+                  <div className="video-placeholder">
+                    <p>📹 Camera Offline</p>
+                  </div>
+                )}
               </div>
             );
           })}
