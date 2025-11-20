@@ -79,7 +79,7 @@ const handleSubmit = async (e) => {
 // Mark user as logged in
 localStorage.setItem("isLoggedIn", "true");
   alert("Login successful!");
-  window.location.href = "/dashboard";
+  window.location.href = "/";
 };
 
   return (

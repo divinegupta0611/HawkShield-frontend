@@ -107,7 +107,7 @@ const Signup = () => {
   // Mark user as logged in
 localStorage.setItem("isLoggedIn", "true");
   alert("Account created successfully!");
-  window.location.href = "/dashboard";
+  window.location.href = "/";
 };
 
   return (
