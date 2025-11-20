@@ -19,7 +19,7 @@ export default function Dashboard() {
         setLoading(true);
         console.log("Fetching cameras from backend...");
         
-        const response = await fetch("http://127.0.0.1:8000/api/cameras/");
+        const response = await fetch("https://hawkshield-backend-6.onrender.com/api/cameras/");
         console.log("Response status:", response.status);
         
         if (!response.ok) {
@@ -103,7 +103,7 @@ export default function Dashboard() {
     formData.append("image", frame, "frame.jpg");
 
     try {
-      const res = await fetch("http://127.0.0.1:8000/api/detection/threats/", {
+      const res = await fetch("https://hawkshield-backend-6.onrender.com/api/detection/threats/", {
         method: "POST",
         body: formData
       });
@@ -144,7 +144,7 @@ export default function Dashboard() {
     if (!window.confirm("Are you sure you want to delete this camera?")) return;
 
     try {
-      const response = await fetch(`http://127.0.0.1:8000/api/cameras/delete/${cameraId}/`, {
+      const response = await fetch(`https://hawkshield-backend-6.onrender.com/api/cameras/delete/${cameraId}/`, {
         method: "DELETE",
       });
 
