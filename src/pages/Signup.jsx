@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import '../style/AuthCSS.css';
 import { supabase } from "../SupabaseClient";
+import { Link } from 'react-router-dom';
 const Signup = () => {
   const [formData, setFormData] = useState({
     fullName: '',
@@ -216,7 +217,7 @@ localStorage.setItem("isLoggedIn", "true");
         </form>
 
         <div className="auth-footer">
-          <p>Already have an account? <a href="/login">Login here</a></p>
+          <p>Already have an account? <Link to="/login">Login here</Link></p>
         </div>
       </div>
     </div>
