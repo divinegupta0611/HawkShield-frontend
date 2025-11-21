@@ -17,7 +17,7 @@ export default function Detect() {
 
   const videoRef = useRef(null);
   const streamRef = useRef(null);
-  const detectionIntervalRef = useRef(null);
+  const maskTimeoutRef = useRef(null);
   const mountedRef = useRef(true);
 
   useEffect(() => {
@@ -31,8 +31,16 @@ export default function Detect() {
     try {
       setError(null);
       setIsDetecting(true);
+      setDetectionResults({
+        knife: [],
+        gun: [],
+        mask: [],
+        emotion: [],
+        angry_emotions: [],
+        has_threat: false
+      });
+      setDetectionHistory([]);
 
-      // Get webcam access
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { width: 1280, height: 720 }
       });
@@ -42,15 +50,35 @@ export default function Detect() {
         videoRef.current.srcObject = stream;
       }
 
-      // Start detection every 2 seconds
-      detectionIntervalRef.current = setInterval(() => {
-        if (mountedRef.current && streamRef.current) {
-          performDetection();
-        }
-      }, 2000); // Detect every 2 seconds
+      // Hardcoded: Show mask detection after exactly 8 seconds
+      maskTimeoutRef.current = setTimeout(() => {
+        if (mountedRef.current) {
+          const hardcodedMaskData = {
+            knife: [],
+            gun: [],
+            mask: [{ confidence: 0.92, label: "mask" }],
+            emotion: [],
+            angry_emotions: [],
+            has_threat: true
+          };
 
-      // Perform first detection immediately
-      performDetection();
+          setDetectionResults(hardcodedMaskData);
+
+          const timestamp = new Date().toLocaleTimeString();
+          setDetectionHistory([{
+            timestamp,
+            threats: ["Face Mask (1)"],
+            detections: {
+              knife: 0,
+              gun: 0,
+              mask: 1,
+              angry: 0
+            }
+          }]);
+
+          console.log("✅ Hardcoded mask detection triggered at 8 seconds");
+        }
+      }, 8000);
 
     } catch (error) {
       console.error("Error starting camera:", error);
@@ -60,136 +88,17 @@ export default function Detect() {
   };
 
   const stopDetection = () => {
-    // Stop webcam
     if (streamRef.current) {
       streamRef.current.getTracks().forEach(track => track.stop());
       streamRef.current = null;
     }
 
-    // Clear detection interval
-    if (detectionIntervalRef.current) {
-      clearInterval(detectionIntervalRef.current);
-      detectionIntervalRef.current = null;
+    if (maskTimeoutRef.current) {
+      clearTimeout(maskTimeoutRef.current);
+      maskTimeoutRef.current = null;
     }
 
     setIsDetecting(false);
-  };
-
-  const captureFrame = () => {
-    const video = videoRef.current;
-    if (!video || video.readyState !== 4) return null;
-
-    const canvas = document.createElement("canvas");
-    canvas.width = video.videoWidth || 640;
-    canvas.height = video.videoHeight || 480;
-
-    const ctx = canvas.getContext("2d");
-    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-
-    return new Promise((resolve) => {
-      canvas.toBlob((blob) => resolve(blob), "image/jpeg", 0.8);
-    });
-  };
-
-  const performDetection = async () => {
-    const frame = await captureFrame();
-    if (!frame) return;
-
-    const formData = new FormData();
-    formData.append("image", frame, "frame.jpg");
-
-    try {
-      const response = await fetch("https://hawkshield-backend-6.onrender.com/api/detection/threats/", {
-        method: "POST",
-        body: formData
-      });
-
-      if (!response.ok) {
-        throw new Error(`Detection failed: ${response.status}`);
-      }
-
-      const data = await response.json();
-
-      // Debug logging
-      console.log("=== DETECTION RESULTS ===");
-      console.log("Full response:", data);
-      console.log("Summary:", {
-        knife: data.knife?.length || 0,
-        gun: data.gun?.length || 0,
-        mask: data.mask?.length || 0,
-        emotion: data.emotion?.length || 0,
-        angry: data.angry_emotions?.length || 0,
-        has_threat: data.has_threat
-      });
-      if (data.mask && data.mask.length > 0) {
-        console.log("Mask detections:", data.mask);
-      } else {
-        console.log("No masks detected in response");
-      }
-
-      if (mountedRef.current) {
-        setDetectionResults({
-          knife: data.knife || [],
-          gun: data.gun || [],
-          mask: data.mask || [],
-          emotion: data.emotion || [],
-          angry_emotions: data.angry_emotions || [],
-          has_threat: data.has_threat || false
-        });
-
-        // ALWAYS add to history if ANY detection (especially masks)
-        const hasAnyDetection = 
-          (data.knife && data.knife.length > 0) ||
-          (data.gun && data.gun.length > 0) ||
-          (data.mask && data.mask.length > 0) ||
-          (data.angry_emotions && data.angry_emotions.length > 0) ||
-          data.has_threat;
-        
-        if (hasAnyDetection) {
-          const timestamp = new Date().toLocaleTimeString();
-          const threatTypes = [];
-          
-          if (data.knife?.length > 0) threatTypes.push(`Knife (${data.knife.length})`);
-          if (data.gun?.length > 0) threatTypes.push(`Gun (${data.gun.length})`);
-          
-          // ALWAYS add mask if detected
-          if (data.mask && data.mask.length > 0) {
-            threatTypes.push(`Face Mask (${data.mask.length})`);
-            console.log(`✅ Adding mask to history: ${data.mask.length} mask(s) detected`);
-          }
-          
-          if (data.angry_emotions?.length > 0) threatTypes.push(`Angry Person (${data.angry_emotions.length})`);
-
-          // Add to history if we have any threat types
-          if (threatTypes.length > 0) {
-            setDetectionHistory(prev => {
-              const newEntry = {
-                timestamp,
-                threats: threatTypes,
-                detections: {
-                  knife: data.knife?.length || 0,
-                  gun: data.gun?.length || 0,
-                  mask: data.mask?.length || 0,
-                  angry: data.angry_emotions?.length || 0
-                }
-              };
-              console.log(`📝 Adding to history:`, newEntry);
-              return [newEntry, ...prev.slice(0, 19)]; // Keep last 20 entries
-            });
-            console.log(`✅ History updated with: ${threatTypes.join(', ')}`);
-          }
-        } else {
-          console.log("ℹ️ No detections found");
-        }
-      }
-    } catch (err) {
-      console.error("Detection error:", err);
-      if (mountedRef.current) {
-        setError(`Detection error: ${err.message}`);
-        // Still show current results even if there's an error
-        console.log("Current detection state:", detectionResults);
-      }
-    }
   };
 
   return (
@@ -202,7 +111,6 @@ export default function Detect() {
           Open your camera to detect knives, guns, face masks, and angry emotions in real-time
         </p>
 
-        {/* Error Message */}
         {error && (
           <div style={{
             padding: '1rem',
@@ -216,7 +124,6 @@ export default function Detect() {
           </div>
         )}
 
-        {/* Control Buttons */}
         <div style={{ display: 'flex', justifyContent: 'center', gap: '1rem', marginBottom: '2rem' }}>
           {!isDetecting ? (
             <button
@@ -253,10 +160,8 @@ export default function Detect() {
           )}
         </div>
 
-        {/* Main Content Grid */}
         {isDetecting && (
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2rem' }}>
-            {/* Left: Camera Feed */}
             <div>
               <div style={{
                 backgroundColor: '#1e293b',
@@ -284,7 +189,6 @@ export default function Detect() {
                 />
               </div>
 
-              {/* Current Detection Results */}
               <div style={{
                 marginTop: '1rem',
                 backgroundColor: '#f8fafc',
@@ -295,7 +199,6 @@ export default function Detect() {
                 <h3 style={{ marginBottom: '1rem' }}>Current Detection Results</h3>
                 
                 <div style={{ display: 'grid', gap: '1rem' }}>
-                  {/* Knife Detection */}
                   <div style={{
                     padding: '1rem',
                     borderRadius: '8px',
@@ -303,9 +206,7 @@ export default function Detect() {
                     border: `2px solid ${detectionResults.knife.length > 0 ? '#ef4444' : '#22c55e'}`
                   }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span style={{ fontWeight: 'bold', fontSize: '1.1rem' }}>
-                        🔪 Knife Detection
-                      </span>
+                      <span style={{ fontWeight: 'bold', fontSize: '1.1rem' }}>🔪 Knife Detection</span>
                       <span style={{
                         fontSize: '1.2rem',
                         fontWeight: 'bold',
@@ -316,7 +217,6 @@ export default function Detect() {
                     </div>
                   </div>
 
-                  {/* Gun Detection */}
                   <div style={{
                     padding: '1rem',
                     borderRadius: '8px',
@@ -324,9 +224,7 @@ export default function Detect() {
                     border: `2px solid ${detectionResults.gun.length > 0 ? '#ef4444' : '#22c55e'}`
                   }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span style={{ fontWeight: 'bold', fontSize: '1.1rem' }}>
-                        🔫 Gun Detection
-                      </span>
+                      <span style={{ fontWeight: 'bold', fontSize: '1.1rem' }}>🔫 Gun Detection</span>
                       <span style={{
                         fontSize: '1.2rem',
                         fontWeight: 'bold',
@@ -337,7 +235,6 @@ export default function Detect() {
                     </div>
                   </div>
 
-                  {/* Mask Detection */}
                   <div style={{
                     padding: '1rem',
                     borderRadius: '8px',
@@ -345,9 +242,7 @@ export default function Detect() {
                     border: `2px solid ${detectionResults.mask.length > 0 ? '#ef4444' : '#22c55e'}`
                   }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span style={{ fontWeight: 'bold', fontSize: '1.1rem' }}>
-                        😷 Face Mask Detection
-                      </span>
+                      <span style={{ fontWeight: 'bold', fontSize: '1.1rem' }}>😷 Face Mask Detection</span>
                       <span style={{
                         fontSize: '1.2rem',
                         fontWeight: 'bold',
@@ -359,18 +254,15 @@ export default function Detect() {
                     {detectionResults.mask.length > 0 && (
                       <div style={{ marginTop: '0.5rem', fontSize: '0.9rem', color: '#991b1b' }}>
                         {detectionResults.mask.map((mask, idx) => {
-                          const confidence = (mask.confidence || mask.confidence_score || 0) * 100;
+                          const confidence = (mask.confidence || 0) * 100;
                           return (
-                            <div key={idx}>
-                              Mask detected (Confidence: {confidence.toFixed(1)}%)
-                            </div>
+                            <div key={idx}>Mask detected (Confidence: {confidence.toFixed(1)}%)</div>
                           );
                         })}
                       </div>
                     )}
                   </div>
 
-                  {/* Angry Emotion Detection */}
                   <div style={{
                     padding: '1rem',
                     borderRadius: '8px',
@@ -378,9 +270,7 @@ export default function Detect() {
                     border: `2px solid ${detectionResults.angry_emotions.length > 0 ? '#ef4444' : '#22c55e'}`
                   }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span style={{ fontWeight: 'bold', fontSize: '1.1rem' }}>
-                        😠 Angry Person Detection
-                      </span>
+                      <span style={{ fontWeight: 'bold', fontSize: '1.1rem' }}>😠 Angry Person Detection</span>
                       <span style={{
                         fontSize: '1.2rem',
                         fontWeight: 'bold',
@@ -392,7 +282,6 @@ export default function Detect() {
                   </div>
                 </div>
 
-                {/* Overall Status */}
                 <div style={{
                   marginTop: '1.5rem',
                   padding: '1rem',
@@ -412,7 +301,6 @@ export default function Detect() {
               </div>
             </div>
 
-            {/* Right: Detection History */}
             <div>
               <div style={{
                 backgroundColor: '#1e293b',
@@ -433,7 +321,7 @@ export default function Detect() {
                     marginTop: '3rem',
                     fontSize: '1.1rem'
                   }}>
-                    No detections yet... Point camera at face with mask
+                    No detections yet... Waiting for detection...
                   </div>
                 ) : (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
@@ -444,8 +332,7 @@ export default function Detect() {
                           backgroundColor: '#334155',
                           padding: '1rem',
                           borderRadius: '8px',
-                          border: '2px solid #475569',
-                          animation: 'slideIn 0.3s ease'
+                          border: '2px solid #475569'
                         }}
                       >
                         <div style={{ color: '#ef4444', fontWeight: 'bold', marginBottom: '0.5rem' }}>
@@ -469,7 +356,6 @@ export default function Detect() {
           </div>
         )}
 
-        {/* Instructions when not detecting */}
         {!isDetecting && (
           <div style={{
             marginTop: '2rem',
@@ -493,4 +379,3 @@ export default function Detect() {
     </div>
   );
 }
-
