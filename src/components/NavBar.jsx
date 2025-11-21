@@ -15,7 +15,7 @@ export default function NavBar() {
   const handleLogout = () => {
     localStorage.removeItem("hawkshield_user");
     setUser(null);
-    window.location.href = "/login";
+    window.location.href = "/";
   };
 
   return (
