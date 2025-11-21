@@ -2,7 +2,8 @@ import React, { useState } from 'react';
 import '../style/AuthCSS.css';
 import { supabase } from "../SupabaseClient";
 import { Link } from 'react-router-dom';
-import Auth from ''
+import { GoogleOAuthProvider, GoogleLogin } from '@react-oauth/google';
+
 const Login = () => {
   const [formData, setFormData] = useState({ email: '', password: '' });
   const [errors, setErrors] = useState({});
@@ -58,7 +59,18 @@ const Login = () => {
     alert("Login successful!");
     window.location.href = "/";
   };
+const handleSuccess = async (response) => {
+    const token = response.credential;
 
+    const res = await fetch("https://hawkshield-backend-6.onrender.com/api/auth/google/", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token })
+    });
+
+    const data = await res.json();
+    console.log(data);
+  };
   return (
     <div className="auth-container">
       <div className="auth-wrapper login-layout">
@@ -110,8 +122,9 @@ const Login = () => {
             <div className="divider"><span>OR</span></div>
 
             <button type="button" className="social-button google-button">
-              <span className="social-icon">🔍</span>
-              Continue with Google
+              <GoogleOAuthProvider clientId="YOUR_GOOGLE_CLIENT_ID">
+              <GoogleLogin onSuccess={handleSuccess} onError={() => console.log("Login Failed")} />
+              </GoogleOAuthProvider>
             </button>
 
             <button type="button" className="social-button microsoft-button">
