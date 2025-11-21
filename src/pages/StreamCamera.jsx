@@ -17,6 +17,7 @@ export default function StreamCamera() {
   const streamRef = useRef(null);
   const detectionIntervalRef = useRef(null);
   const heartbeatIntervalRef = useRef(null);
+  const frameUploadIntervalRef = useRef(null);
   const mountedRef = useRef(true);
 
   useEffect(() => {
@@ -68,7 +69,7 @@ export default function StreamCamera() {
           cameraId: newCameraId,
           cameraName: cameraName,
           sourceDeviceId: deviceId,
-          hasRemoteStream: false,
+          hasRemoteStream: true,
           people: 0,
           threats: 0
         })
@@ -83,9 +84,18 @@ export default function StreamCamera() {
       setIsStreaming(true);
       setStatus("🔴 Streaming live");
 
+      // Start uploading frames every 200ms for smooth streaming
+      frameUploadIntervalRef.current = setInterval(() => {
+        if (mountedRef.current && streamRef.current) {
+          uploadFrame(newCameraId);
+        }
+      }, 200); // 5 FPS
+
       // Start sending frames for detection every 5 seconds
       detectionIntervalRef.current = setInterval(() => {
-        sendFrameForDetection(newCameraId);
+        if (mountedRef.current && streamRef.current) {
+          sendFrameForDetection(newCameraId);
+        }
       }, 5000);
 
       // Send heartbeat every 10 seconds to keep camera active
@@ -116,6 +126,11 @@ export default function StreamCamera() {
     if (heartbeatIntervalRef.current) {
       clearInterval(heartbeatIntervalRef.current);
       heartbeatIntervalRef.current = null;
+    }
+
+    if (frameUploadIntervalRef.current) {
+      clearInterval(frameUploadIntervalRef.current);
+      frameUploadIntervalRef.current = null;
     }
 
     // Remove camera from backend
@@ -150,6 +165,23 @@ export default function StreamCamera() {
     });
   };
 
+  const uploadFrame = async (camId) => {
+    const frame = await captureFrame();
+    if (!frame) return;
+
+    const formData = new FormData();
+    formData.append("frame", frame, "frame.jpg");
+
+    try {
+      await fetch(`https://hawkshield-backend-6.onrender.com/api/cameras/frame/${camId}/upload/`, {
+        method: "POST",
+        body: formData
+      });
+    } catch (error) {
+      console.error("Frame upload error:", error);
+    }
+  };
+
   const sendFrameForDetection = async (camId) => {
     if (!mountedRef.current || !streamRef.current) return;
 
@@ -159,6 +191,7 @@ export default function StreamCamera() {
     const formData = new FormData();
     formData.append("image", frame, "frame.jpg");
     formData.append("cameraId", camId);
+    formData.append("cameraName", cameraName);
 
     try {
       const response = await fetch("https://hawkshield-backend-6.onrender.com/api/detection/threats/", {

@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState, useCallback } from "react";
 import NavBar from "../components/NavBar";
 import '../style/DashboardCSS.css';
 
@@ -13,15 +13,25 @@ export default function Dashboard() {
   const videoRefs = useRef({});
   const streams = useRef({});
   const detectionIntervals = useRef({});
+  const frameIntervals = useRef({});
   const mountedRef = useRef(true);
+  const initializedCameras = useRef(new Set());
 
-  // Fetch cameras from backend API (REDUCED FREQUENCY)
+  // Get unique device ID
+  const getDeviceId = useCallback(() => {
+    let deviceId = localStorage.getItem('deviceId');
+    if (!deviceId) {
+      deviceId = 'device_' + Math.random().toString(36).substr(2, 9);
+      localStorage.setItem('deviceId', deviceId);
+    }
+    return deviceId;
+  }, []);
+
+  // Fetch cameras from backend API
   useEffect(() => {
     const fetchCameras = async () => {
       try {
         if (!mountedRef.current) return;
-        
-        console.log("Fetching cameras from backend...");
         
         const response = await fetch("https://hawkshield-backend-6.onrender.com/api/cameras/");
         
@@ -30,8 +40,6 @@ export default function Dashboard() {
         }
         
         const data = await response.json();
-        console.log("Received cameras:", data);
-        
         const camerasArray = data.cameras || [];
         
         if (mountedRef.current) {
@@ -51,83 +59,175 @@ export default function Dashboard() {
     };
 
     fetchCameras();
-    
-    // INCREASED INTERVAL: Refresh cameras every 30 seconds instead of 10
-    const interval = setInterval(fetchCameras, 30000);
+    const interval = setInterval(fetchCameras, 10000);
     
     return () => {
       clearInterval(interval);
-      mountedRef.current = false;
     };
   }, []);
 
-  // Start webcam stream ONLY for cameras that belong to THIS device
+  // Fetch logs from backend
   useEffect(() => {
-    const startLocalStreams = async () => {
-      for (const cam of cameras) {
-        const camId = cam.cameraId || cam.id;
-        
-        // Check if this camera should stream from THIS device
-        // You can add a field like "sourceDeviceId" to identify which device owns this camera
-        const shouldStreamLocally = cam.sourceDeviceId === getDeviceId() || !cam.hasRemoteStream;
-        
-        if (shouldStreamLocally && !streams.current[camId]) {
-          try {
-            const stream = await navigator.mediaDevices.getUserMedia({ 
-              video: { width: 1280, height: 720 } 
-            });
-            
-            if (!mountedRef.current) {
-              stream.getTracks().forEach(track => track.stop());
-              return;
-            }
-            
-            streams.current[camId] = stream;
-            setIsStreaming(prev => ({ ...prev, [camId]: true }));
+    const fetchLogs = async () => {
+      try {
+        const [threatRes, safeRes] = await Promise.all([
+          fetch("https://hawkshield-backend-6.onrender.com/api/detection/logs/?type=threat&limit=50"),
+          fetch("https://hawkshield-backend-6.onrender.com/api/detection/logs/?type=safe&limit=50")
+        ]);
 
-            if (videoRefs.current[camId]) {
-              videoRefs.current[camId].srcObject = stream;
-            }
-
-            // Start streaming to backend
-            startStreamingToBackend(camId, stream);
-            
-          } catch (e) {
-            console.error("Camera access error:", e);
-            setIsStreaming(prev => ({ ...prev, [camId]: false }));
+        if (threatRes.ok) {
+          const threatData = await threatRes.json();
+          const threatLogEntries = threatData.logs.map(log => {
+            const timestamp = new Date(log.timestamp).toLocaleTimeString();
+            const threatTypes = log.threatTypes?.join(", ") || "Threat";
+            return `[${timestamp}] ${log.cameraId} | ${log.cameraName} - ⚠️ ${threatTypes} detected`;
+          });
+          if (mountedRef.current) {
+            setThreatLogs(threatLogEntries);
           }
         }
+
+        if (safeRes.ok) {
+          const safeData = await safeRes.json();
+          const safeLogEntries = safeData.logs.map(log => {
+            const timestamp = new Date(log.timestamp).toLocaleTimeString();
+            return `[${timestamp}] ${log.cameraId} | ${log.cameraName} - ✓ Safe`;
+          });
+          if (mountedRef.current) {
+            setSafeLogs(safeLogEntries);
+          }
+        }
+      } catch (err) {
+        console.error("Error fetching logs:", err);
       }
     };
 
-    startLocalStreams();
+    fetchLogs();
+    const logInterval = setInterval(fetchLogs, 5000);
+    
+    return () => clearInterval(logInterval);
+  }, []);
+
+  // Initialize camera streams (only once per camera to prevent flickering)
+  useEffect(() => {
+    if (loading) return;
+
+    const deviceId = getDeviceId();
+
+    cameras.forEach((cam) => {
+      const camId = cam.cameraId || cam.id;
+      
+      // Skip if already initialized
+      if (initializedCameras.current.has(camId)) {
+        return;
+      }
+
+      const isLocalCamera = cam.sourceDeviceId === deviceId;
+      
+      if (isLocalCamera) {
+        // This is a local camera - start webcam stream
+        initializeLocalStream(camId);
+      } else {
+        // This is a remote camera - start fetching frames
+        initializeRemoteStream(camId);
+      }
+      
+      initializedCameras.current.add(camId);
+    });
 
     // Cleanup function
     return () => {
       Object.entries(streams.current).forEach(([camId, stream]) => {
         stream.getTracks().forEach(track => track.stop());
-        if (detectionIntervals.current[camId]) {
-          clearInterval(detectionIntervals.current[camId]);
-        }
       });
+      Object.values(detectionIntervals.current).forEach(interval => clearInterval(interval));
+      Object.values(frameIntervals.current).forEach(interval => clearInterval(interval));
       streams.current = {};
       detectionIntervals.current = {};
+      frameIntervals.current = {};
     };
-  }, [cameras]);
+  }, [cameras, loading, getDeviceId]);
 
-  // Get unique device ID (stored in localStorage)
-  const getDeviceId = () => {
-    let deviceId = localStorage.getItem('deviceId');
-    if (!deviceId) {
-      deviceId = 'device_' + Math.random().toString(36).substr(2, 9);
-      localStorage.setItem('deviceId', deviceId);
+  const initializeLocalStream = async (camId) => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        video: { width: 1280, height: 720 } 
+      });
+      
+      if (!mountedRef.current) {
+        stream.getTracks().forEach(track => track.stop());
+        return;
+      }
+      
+      streams.current[camId] = stream;
+      setIsStreaming(prev => ({ ...prev, [camId]: true }));
+
+      if (videoRefs.current[camId]) {
+        videoRefs.current[camId].srcObject = stream;
+      }
+
+      // Start streaming frames to backend and detection
+      startStreamingToBackend(camId, stream);
+      
+    } catch (e) {
+      console.error("Camera access error:", e);
+      setIsStreaming(prev => ({ ...prev, [camId]: false }));
     }
-    return deviceId;
   };
 
-  // Stream video to backend for remote viewing
+  const initializeRemoteStream = (camId) => {
+    // Start fetching frames from backend
+    if (frameIntervals.current[camId]) {
+      clearInterval(frameIntervals.current[camId]);
+    }
+
+    frameIntervals.current[camId] = setInterval(() => {
+      fetchRemoteFrame(camId);
+    }, 200); // Fetch frame every 200ms for smooth playback (5 FPS)
+    
+    // Fetch first frame immediately
+    fetchRemoteFrame(camId);
+  };
+
+  const fetchRemoteFrame = async (camId) => {
+    try {
+      const response = await fetch(
+        `https://hawkshield-backend-6.onrender.com/api/cameras/frame/${camId}/`
+      );
+      
+      if (response.ok) {
+        const data = await response.json();
+        if (data.frame && videoRefs.current[camId]) {
+          const video = videoRefs.current[camId];
+          const img = new Image();
+          img.onload = () => {
+            const canvas = document.createElement('canvas');
+            canvas.width = img.width;
+            canvas.height = img.height;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0);
+            
+            // Create a video stream from canvas
+            const stream = canvas.captureStream(5); // 5 FPS
+            if (video.srcObject) {
+              video.srcObject.getTracks().forEach(track => track.stop());
+            }
+            video.srcObject = stream;
+            setIsStreaming(prev => ({ ...prev, [camId]: true }));
+          };
+          img.src = `data:image/jpeg;base64,${data.frame}`;
+        }
+      } else {
+        setIsStreaming(prev => ({ ...prev, [camId]: false }));
+      }
+    } catch (err) {
+      console.error("Error fetching remote frame:", err);
+      setIsStreaming(prev => ({ ...prev, [camId]: false }));
+    }
+  };
+
   const startStreamingToBackend = (camId, stream) => {
-    // Start detection interval for THIS camera only
+    // Start detection interval
     if (detectionIntervals.current[camId]) {
       clearInterval(detectionIntervals.current[camId]);
     }
@@ -135,8 +235,37 @@ export default function Dashboard() {
     detectionIntervals.current[camId] = setInterval(() => {
       if (mountedRef.current && streams.current[camId]) {
         sendForDetection(camId);
+        uploadFrame(camId);
       }
-    }, 5000); // INCREASED: Detection every 5 seconds instead of 4
+    }, 5000); // Detection every 5 seconds
+
+    // Upload frames more frequently for smooth streaming
+    if (frameIntervals.current[camId]) {
+      clearInterval(frameIntervals.current[camId]);
+    }
+    
+    frameIntervals.current[camId] = setInterval(() => {
+      if (mountedRef.current && streams.current[camId]) {
+        uploadFrame(camId);
+      }
+    }, 200); // Upload frame every 200ms (5 FPS)
+  };
+
+  const uploadFrame = async (camId) => {
+    const frame = await captureFrame(camId);
+    if (!frame) return;
+
+    const formData = new FormData();
+    formData.append("frame", frame, "frame.jpg");
+
+    try {
+      await fetch(`https://hawkshield-backend-6.onrender.com/api/cameras/frame/${camId}/upload/`, {
+        method: "POST",
+        body: formData
+      });
+    } catch (err) {
+      console.error("Frame upload error:", err);
+    }
   };
 
   const captureFrame = (camId) => {
@@ -165,6 +294,7 @@ export default function Dashboard() {
     const formData = new FormData();
     formData.append("image", frame, "frame.jpg");
     formData.append("cameraId", camId);
+    formData.append("cameraName", cam.cameraName || cam.name || "Unknown");
 
     try {
       const res = await fetch("https://hawkshield-backend-6.onrender.com/api/detection/threats/", {
@@ -175,28 +305,19 @@ export default function Dashboard() {
       if (!res.ok) throw new Error(`Detection failed: ${res.status}`);
 
       const data = await res.json();
-
-      const hasThreat =
-        (data.knife?.length || 0) > 0 ||
-        (data.gun?.length || 0) > 0 ||
-        (data.mask?.length || 0) > 0 ||
-        (data.emotion?.length || 0) > 0;
-
-      const timestamp = new Date().toLocaleTimeString();
-      const camName = cam.cameraName || cam.name || "Unknown";
-      const logEntry = `[${timestamp}] ${camId} | ${camName} - ${hasThreat ? "⚠️ Threat detected" : "✓ Safe"}`;
-
-      if (mountedRef.current) {
-        if (hasThreat) {
-          setThreatLogs((prev) => [...prev.slice(-20), logEntry]);
-        } else {
-          setSafeLogs((prev) => [...prev.slice(-20), logEntry]);
-        }
-      }
+      console.log("Detection result:", data);
+      // Logs are now fetched from backend automatically
     } catch (err) {
       console.error("Detection error:", err);
     }
   };
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
 
   // REMOVE CAMERA FUNCTION
   const removeCamera = async (cameraId) => {
@@ -214,11 +335,18 @@ export default function Dashboard() {
           delete streams.current[cameraId];
         }
 
-        // Stop detection interval
+        // Stop intervals
         if (detectionIntervals.current[cameraId]) {
           clearInterval(detectionIntervals.current[cameraId]);
           delete detectionIntervals.current[cameraId];
         }
+        if (frameIntervals.current[cameraId]) {
+          clearInterval(frameIntervals.current[cameraId]);
+          delete frameIntervals.current[cameraId];
+        }
+
+        // Remove from initialized set
+        initializedCameras.current.delete(cameraId);
 
         // Remove camera from list
         setCameras(cameras.filter((cam) => (cam.cameraId || cam.id) !== cameraId));
@@ -321,7 +449,11 @@ export default function Dashboard() {
                 </div>
 
                 <video
-                  ref={(el) => (videoRefs.current[camId] = el)}
+                  ref={(el) => {
+                    if (el && !videoRefs.current[camId]) {
+                      videoRefs.current[camId] = el;
+                    }
+                  }}
                   autoPlay
                   playsInline
                   muted
