@@ -110,6 +110,16 @@ export default function Detect() {
 
       const data = await response.json();
 
+      // Debug logging
+      console.log("Detection results:", {
+        knife: data.knife?.length || 0,
+        gun: data.gun?.length || 0,
+        mask: data.mask?.length || 0,
+        emotion: data.emotion?.length || 0,
+        angry: data.angry_emotions?.length || 0,
+        has_threat: data.has_threat
+      });
+
       if (mountedRef.current) {
         setDetectionResults({
           knife: data.knife || [],
@@ -148,6 +158,8 @@ export default function Detect() {
       console.error("Detection error:", err);
       if (mountedRef.current) {
         setError(`Detection error: ${err.message}`);
+        // Still show current results even if there's an error
+        console.log("Current detection state:", detectionResults);
       }
     }
   };
@@ -316,6 +328,18 @@ export default function Detect() {
                         {detectionResults.mask.length}
                       </span>
                     </div>
+                    {detectionResults.mask.length > 0 && (
+                      <div style={{ marginTop: '0.5rem', fontSize: '0.9rem', color: '#991b1b' }}>
+                        {detectionResults.mask.map((mask, idx) => {
+                          const confidence = (mask.confidence || mask.confidence_score || 0) * 100;
+                          return (
+                            <div key={idx}>
+                              Mask detected (Confidence: {confidence.toFixed(1)}%)
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
                   </div>
 
                   {/* Angry Emotion Detection */}
