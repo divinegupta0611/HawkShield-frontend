@@ -284,6 +284,9 @@ export default function Detect() {
                 />
               </div>
 
+              
+            </div>
+
             {/* Right: Detection History */}
             <div>
               <div style={{
