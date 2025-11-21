@@ -122,14 +122,9 @@ const handleSuccess = async (response) => {
             <div className="divider"><span>OR</span></div>
 
             <button type="button" className="social-button google-button">
-              <GoogleOAuthProvider clientId="YOUR_GOOGLE_CLIENT_ID">
+              <GoogleOAuthProvider clientId={import.meta.env.VITE_GOOGLE_CLIENT_ID}>
               <GoogleLogin onSuccess={handleSuccess} onError={() => console.log("Login Failed")} />
               </GoogleOAuthProvider>
-            </button>
-
-            <button type="button" className="social-button microsoft-button">
-              <span className="social-icon">🪟</span>
-              Continue with Microsoft
             </button>
           </form>
 
