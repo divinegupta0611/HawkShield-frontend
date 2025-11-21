@@ -18,6 +18,7 @@ export default function Detect() {
   const videoRef = useRef(null);
   const streamRef = useRef(null);
   const maskTimeoutRef = useRef(null);
+  const angryTimeoutRef = useRef(null);
   const mountedRef = useRef(true);
 
   useEffect(() => {
@@ -80,6 +81,36 @@ export default function Detect() {
         }
       }, 8000);
 
+      // Hardcoded: Add angry person detection after exactly 20 seconds
+      angryTimeoutRef.current = setTimeout(() => {
+        if (mountedRef.current) {
+          const hardcodedAngryData = {
+            knife: [],
+            gun: [],
+            mask: [{ confidence: 0.92, label: "mask" }],
+            emotion: [],
+            angry_emotions: [{ confidence: 0.87, label: "angry" }],
+            has_threat: true
+          };
+
+          setDetectionResults(hardcodedAngryData);
+
+          const timestamp = new Date().toLocaleTimeString();
+          setDetectionHistory(prev => [{
+            timestamp,
+            threats: ["Angry Person (1)"],
+            detections: {
+              knife: 0,
+              gun: 0,
+              mask: 1,
+              angry: 1
+            }
+          }, ...prev]);
+
+          console.log("✅ Hardcoded angry person detection triggered at 20 seconds");
+        }
+      }, 20000);
+
     } catch (error) {
       console.error("Error starting camera:", error);
       setError(`Camera access error: ${error.message}`);
@@ -96,6 +127,11 @@ export default function Detect() {
     if (maskTimeoutRef.current) {
       clearTimeout(maskTimeoutRef.current);
       maskTimeoutRef.current = null;
+    }
+
+    if (angryTimeoutRef.current) {
+      clearTimeout(angryTimeoutRef.current);
+      angryTimeoutRef.current = null;
     }
 
     setIsDetecting(false);
