@@ -6,6 +6,7 @@ import Signup from "./pages/Signup";
 import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
 import StreamCamera from "./pages/StreamCamera";
+import Detect from "./pages/Detect";
 export default function App() {
   return (
     <Routes>
@@ -16,6 +17,7 @@ export default function App() {
       <Route path="/login" element={<Login />} />
       <Route path="/dashboard" element={<Dashboard />} />
       <Route path="/stream" element={<StreamCamera />} />
+      <Route path="/detect" element={<Detect />} />
     </Routes>
   );
 }
