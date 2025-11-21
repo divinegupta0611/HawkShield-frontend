@@ -46,6 +46,10 @@
   transition: color 0.3s;
   font-weight: 500;
 }
+.logout-btn:hover {
+  color: #93c5fd;
+  cursor: pointer;
+}
 .user-circle {
   width: 45px;
   height: 45px;
