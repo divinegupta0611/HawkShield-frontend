@@ -30,7 +30,7 @@ export default function NavBar() {
             <li><Link to="/contact">Contact Us</Link></li>
             <li><Link to="/detect">Detect</Link></li>
             <li><Link to="/dashboard">Dashboard</Link></li>
-
+            <li><Link to="/detect">Detect</Link></li>
             {!user ? (
               <li><Link to="/signup">Signup</Link></li>
             ) : (
