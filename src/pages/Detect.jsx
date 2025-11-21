@@ -111,7 +111,9 @@ export default function Detect() {
       const data = await response.json();
 
       // Debug logging
-      console.log("Detection results:", {
+      console.log("=== DETECTION RESULTS ===");
+      console.log("Full response:", data);
+      console.log("Summary:", {
         knife: data.knife?.length || 0,
         gun: data.gun?.length || 0,
         mask: data.mask?.length || 0,
@@ -119,6 +121,11 @@ export default function Detect() {
         angry: data.angry_emotions?.length || 0,
         has_threat: data.has_threat
       });
+      if (data.mask && data.mask.length > 0) {
+        console.log("Mask detections:", data.mask);
+      } else {
+        console.log("No masks detected in response");
+      }
 
       if (mountedRef.current) {
         setDetectionResults({
