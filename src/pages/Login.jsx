@@ -64,7 +64,7 @@ const Login = () => {
       <div className="auth-wrapper login-layout">
         {/* Image Panel - Right Side (due to flex-direction: row-reverse) */}
         <div className="auth-image-panel">
-          <img src="./public/Auth.jpeg" alt="Security Shield" />
+          <img src="./public/shield.png" alt="Security Shield" />
           <div className="image-panel-text">
             <h2>Welcome Back!</h2>
             <p>Access your security dashboard</p>
