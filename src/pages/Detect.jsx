@@ -137,28 +137,49 @@ export default function Detect() {
           has_threat: data.has_threat || false
         });
 
-        // Add to history if threat detected
-        if (data.has_threat) {
+        // ALWAYS add to history if ANY detection (especially masks)
+        const hasAnyDetection = 
+          (data.knife && data.knife.length > 0) ||
+          (data.gun && data.gun.length > 0) ||
+          (data.mask && data.mask.length > 0) ||
+          (data.angry_emotions && data.angry_emotions.length > 0) ||
+          data.has_threat;
+        
+        if (hasAnyDetection) {
           const timestamp = new Date().toLocaleTimeString();
           const threatTypes = [];
+          
           if (data.knife?.length > 0) threatTypes.push(`Knife (${data.knife.length})`);
           if (data.gun?.length > 0) threatTypes.push(`Gun (${data.gun.length})`);
-          if (data.mask?.length > 0) threatTypes.push(`Face Mask (${data.mask.length})`);
+          
+          // ALWAYS add mask if detected
+          if (data.mask && data.mask.length > 0) {
+            threatTypes.push(`Face Mask (${data.mask.length})`);
+            console.log(`✅ Adding mask to history: ${data.mask.length} mask(s) detected`);
+          }
+          
           if (data.angry_emotions?.length > 0) threatTypes.push(`Angry Person (${data.angry_emotions.length})`);
 
-          setDetectionHistory(prev => [
-            {
-              timestamp,
-              threats: threatTypes,
-              detections: {
-                knife: data.knife?.length || 0,
-                gun: data.gun?.length || 0,
-                mask: data.mask?.length || 0,
-                angry: data.angry_emotions?.length || 0
-              }
-            },
-            ...prev.slice(0, 19) // Keep last 20 entries
-          ]);
+          // Add to history if we have any threat types
+          if (threatTypes.length > 0) {
+            setDetectionHistory(prev => {
+              const newEntry = {
+                timestamp,
+                threats: threatTypes,
+                detections: {
+                  knife: data.knife?.length || 0,
+                  gun: data.gun?.length || 0,
+                  mask: data.mask?.length || 0,
+                  angry: data.angry_emotions?.length || 0
+                }
+              };
+              console.log(`📝 Adding to history:`, newEntry);
+              return [newEntry, ...prev.slice(0, 19)]; // Keep last 20 entries
+            });
+            console.log(`✅ History updated with: ${threatTypes.join(', ')}`);
+          }
+        } else {
+          console.log("ℹ️ No detections found");
         }
       }
     } catch (err) {
@@ -401,7 +422,9 @@ export default function Detect() {
                 height: '600px',
                 overflowY: 'auto'
               }}>
-                <h3 style={{ color: 'white', marginBottom: '1rem' }}>Detection History</h3>
+                <h3 style={{ color: 'white', marginBottom: '1rem' }}>
+                  Detection History ({detectionHistory.length})
+                </h3>
                 
                 {detectionHistory.length === 0 ? (
                   <div style={{
@@ -410,7 +433,7 @@ export default function Detect() {
                     marginTop: '3rem',
                     fontSize: '1.1rem'
                   }}>
-                    No threats detected yet...
+                    No detections yet... Point camera at face with mask
                   </div>
                 ) : (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
@@ -421,14 +444,15 @@ export default function Detect() {
                           backgroundColor: '#334155',
                           padding: '1rem',
                           borderRadius: '8px',
-                          border: '2px solid #475569'
+                          border: '2px solid #475569',
+                          animation: 'slideIn 0.3s ease'
                         }}
                       >
                         <div style={{ color: '#ef4444', fontWeight: 'bold', marginBottom: '0.5rem' }}>
-                          ⚠️ Threat Detected - {entry.timestamp}
+                          ⚠️ Detection - {entry.timestamp}
                         </div>
                         <div style={{ color: '#cbd5e1', marginBottom: '0.5rem' }}>
-                          <strong>Threats:</strong> {entry.threats.join(', ')}
+                          <strong>Detected:</strong> {entry.threats.join(', ')}
                         </div>
                         <div style={{ color: '#94a3b8', fontSize: '0.9rem' }}>
                           🔪 Knife: {entry.detections.knife} | 
