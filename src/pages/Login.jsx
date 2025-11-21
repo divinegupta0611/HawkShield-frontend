@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import '../style/AuthCSS.css';
 import { supabase } from "../SupabaseClient";
 import { Link } from 'react-router-dom';
-
+import Auth from ''
 const Login = () => {
   const [formData, setFormData] = useState({ email: '', password: '' });
   const [errors, setErrors] = useState({});
@@ -64,7 +64,7 @@ const Login = () => {
       <div className="auth-wrapper login-layout">
         {/* Image Panel - Right Side (due to flex-direction: row-reverse) */}
         <div className="auth-image-panel">
-          <img src="/Auth.jpeg" alt="Security Shield" />
+          <img src="./public/Auth.jpeg" alt="Security Shield" />
           <div className="image-panel-text">
             <h2>Welcome Back!</h2>
             <p>Access your security dashboard</p>

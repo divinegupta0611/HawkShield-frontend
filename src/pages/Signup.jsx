@@ -84,7 +84,7 @@ const Signup = () => {
       <div className="auth-wrapper signup-layout">
         {/* Image Panel - Left Side */}
         <div className="auth-image-panel">
-          <img src="/Auth.jpeg" alt="Security Shield" />
+          <img src="./public/Auth.jpeg" alt="Security Shield" />
           <div className="image-panel-text">
             <h2>Join HawkShield</h2>
             <p>Your security journey starts here</p>
