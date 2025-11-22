@@ -7,6 +7,7 @@ import { GoogleOAuthProvider, GoogleLogin } from '@react-oauth/google';
 const Login = () => {
   // Add this line here to debug
   console.log("Client ID:", import.meta.env.VITE_GOOGLE_CLIENT_ID);
+  console.log("All env variables:", import.meta.env);
   const [formData, setFormData] = useState({ email: '', password: '' });
   const [errors, setErrors] = useState({});
   const [showPassword, setShowPassword] = useState(false);
@@ -130,7 +131,7 @@ const handleSuccess = async (response) => {
 
             <div className="divider"><span>OR</span></div>
 
-              <GoogleOAuthProvider clientId="901295510906-4t1cmfsvmuok3p25bg2s0gsc308vg94s.apps.googleusercontent.com">
+              <GoogleOAuthProvider clientId={import.meta.env.VITE_GOOGLE_CLIENT_ID}>
               <GoogleLogin onSuccess={handleSuccess} onError={() => console.log("Login Failed")} />
               </GoogleOAuthProvider>
 
