@@ -7,7 +7,7 @@ import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
 import StreamCamera from "./pages/StreamCamera";
 import Detect from "./pages/Detect";
-import ForgotPassword from "./pages/ForgetPassword";
+import ForgotPassword from "./pages/ForgotPassword";
 import ResetPassword from "./pages/ResetPassword";
 export default function App() {
   return (
