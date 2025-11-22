@@ -60,17 +60,24 @@ const Login = () => {
     window.location.href = "/";
   };
 const handleSuccess = async (response) => {
-    const token = response.credential;
+  const token = response.credential;
 
-    const res = await fetch("https://hawkshield-backend-6.onrender.com/api/auth/google/", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ token })
-    });
+  const res = await fetch("https://hawkshield-backend-6.onrender.com/api/auth/google/", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ token })
+  });
 
-    const data = await res.json();
-    console.log(data);
-  };
+  const data = await res.json();
+
+  if (data.success) {
+    localStorage.setItem("hawkshield_user", JSON.stringify(data.user));
+    localStorage.setItem("jwt_token", data.token);
+    localStorage.setItem("isLoggedIn", "true");
+    window.location.href = "/";
+  }
+};
+
   return (
     <div className="auth-container">
       <div className="auth-wrapper login-layout">
