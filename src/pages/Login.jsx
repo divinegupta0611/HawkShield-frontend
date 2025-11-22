@@ -130,7 +130,7 @@ const handleSuccess = async (response) => {
 
             <div className="divider"><span>OR</span></div>
 
-              <GoogleOAuthProvider clientId={import.meta.env.VITE_GOOGLE_CLIENT_ID}>
+              <GoogleOAuthProvider clientId="901295510906-4t1cmfsvmuok3p25bg2s0gsc308vg94s.apps.googleusercontent.com">
               <GoogleLogin onSuccess={handleSuccess} onError={() => console.log("Login Failed")} />
               </GoogleOAuthProvider>
 
