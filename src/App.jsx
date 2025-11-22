@@ -7,6 +7,8 @@ import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
 import StreamCamera from "./pages/StreamCamera";
 import Detect from "./pages/Detect";
+import ForgotPassword from "./pages/ForgetPassword";
+import ResetPassword from "./pages/ResetPassword";
 export default function App() {
   return (
     <Routes>
@@ -18,6 +20,8 @@ export default function App() {
       <Route path="/dashboard" element={<Dashboard />} />
       <Route path="/stream" element={<StreamCamera />} />
       <Route path="/detect" element={<Detect />} />
+      <Route path="/forgot-password" element={<ForgotPassword />} />
+      <Route path="/reset-password" element={<ResetPassword />} />
     </Routes>
   );
 }
