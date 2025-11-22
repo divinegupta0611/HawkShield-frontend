@@ -5,6 +5,8 @@ import { Link } from 'react-router-dom';
 import { GoogleOAuthProvider, GoogleLogin } from '@react-oauth/google';
 
 const Login = () => {
+  // Add this line here to debug
+  console.log("Client ID:", import.meta.env.VITE_GOOGLE_CLIENT_ID);
   const [formData, setFormData] = useState({ email: '', password: '' });
   const [errors, setErrors] = useState({});
   const [showPassword, setShowPassword] = useState(false);
@@ -128,11 +130,10 @@ const handleSuccess = async (response) => {
 
             <div className="divider"><span>OR</span></div>
 
-            <button type="button" className="social-button google-button">
               <GoogleOAuthProvider clientId={import.meta.env.VITE_GOOGLE_CLIENT_ID}>
               <GoogleLogin onSuccess={handleSuccess} onError={() => console.log("Login Failed")} />
               </GoogleOAuthProvider>
-            </button>
+
           </form>
 
           <div className="auth-footer">
