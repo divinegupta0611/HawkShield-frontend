@@ -21,7 +21,7 @@ const ForgotPassword = () => {
   const styles = {
     container: {
       minHeight: '100vh',
-      background: 'linear-gradient(135deg, #0a0f1c 0%, #0d1529 50%, #0a1628 100%)',
+      background: '#ffffffff',
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
