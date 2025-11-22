@@ -65,7 +65,7 @@ const ForgotPassword = () => {
       position: 'relative',
       width: '100%',
       maxWidth: '420px',
-      background: 'linear-gradient(145deg, rgba(15, 23, 42, 0.9) 0%, rgba(15, 23, 42, 0.95) 100%)',
+      background: '#ffffff',
       backdropFilter: 'blur(20px)',
       borderRadius: '24px',
       border: '1px solid rgba(59, 130, 246, 0.2)',
