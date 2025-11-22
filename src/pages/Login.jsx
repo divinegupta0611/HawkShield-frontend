@@ -2,12 +2,77 @@ import React, { useState } from 'react';
 import '../style/AuthCSS.css';
 import { supabase } from "../SupabaseClient";
 import { Link } from 'react-router-dom';
-import { GoogleOAuthProvider, GoogleLogin } from '@react-oauth/google';
+import { GoogleOAuthProvider, useGoogleLogin } from '@react-oauth/google';
+
+// Create a separate component for Google Button
+const GoogleButton = () => {
+  const googleLogin = useGoogleLogin({
+    onSuccess: async (tokenResponse) => {
+      console.log("Google login success, got access token");
+      
+      try {
+        // Get user info directly from Google
+        const res = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+          headers: { Authorization: `Bearer ${tokenResponse.access_token}` }
+        });
+        
+        const userData = await res.json();
+        console.log("User data from Google:", userData);
+        
+        // Store user data
+        localStorage.setItem("hawkshield_user", JSON.stringify({
+          email: userData.email,
+          name: userData.name,
+          picture: userData.picture
+        }));
+        localStorage.setItem("isLoggedIn", "true");
+        
+        console.log("Redirecting to home...");
+        window.location.href = "/";
+        
+      } catch (error) {
+        console.error("Error fetching user data:", error);
+        alert("Login failed. Please try again.");
+      }
+    },
+    onError: (error) => {
+      console.error("Google login error:", error);
+      alert("Google login failed");
+    }
+  });
+
+  return (
+    <button 
+      type="button" 
+      onClick={() => googleLogin()} 
+      className="social-button google-button"
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: '10px',
+        padding: '10px 20px',
+        border: '1px solid #ddd',
+        borderRadius: '5px',
+        background: 'white',
+        cursor: 'pointer',
+        width: '100%'
+      }}
+    >
+      <img 
+        src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" 
+        alt="Google" 
+        style={{ width: '20px', height: '20px' }}
+      />
+      Sign in with Google
+    </button>
+  );
+};
 
 const Login = () => {
-  // Add this line here to debug
   console.log("Client ID:", import.meta.env.VITE_GOOGLE_CLIENT_ID);
   console.log("All env variables:", import.meta.env);
+  
   const [formData, setFormData] = useState({ email: '', password: '' });
   const [errors, setErrors] = useState({});
   const [showPassword, setShowPassword] = useState(false);
@@ -62,29 +127,10 @@ const Login = () => {
     alert("Login successful!");
     window.location.href = "/";
   };
-const handleSuccess = async (response) => {
-  const token = response.credential;
-
-  const res = await fetch("https://hawkshield-backend-6.onrender.com/api/auth/google/", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ token })
-  });
-
-  const data = await res.json();
-
-  if (data.success) {
-    localStorage.setItem("hawkshield_user", JSON.stringify(data.user));
-    localStorage.setItem("jwt_token", data.token);
-    localStorage.setItem("isLoggedIn", "true");
-    window.location.href = "/";
-  }
-};
 
   return (
     <div className="auth-container">
       <div className="auth-wrapper login-layout">
-        {/* Image Panel - Right Side (due to flex-direction: row-reverse) */}
         <div className="auth-image-panel">
           <img src="/shield.png" alt="Security Shield" />
           <div className="image-panel-text">
@@ -93,7 +139,6 @@ const handleSuccess = async (response) => {
           </div>
         </div>
 
-        {/* Form Panel - Left Side */}
         <div className="auth-box">
           <div className="auth-header">
             <h1>HawkShield</h1>
@@ -131,10 +176,9 @@ const handleSuccess = async (response) => {
 
             <div className="divider"><span>OR</span></div>
 
-              <GoogleOAuthProvider clientId="901295510906-4t1cmfsvmuok3p25bg2s0gsc308vg94s.apps.googleusercontent.com">
-              <GoogleLogin onSuccess={handleSuccess} onError={() => console.log("Login Failed")} ux_mode="redirect"
-    redirect_uri={window.location.origin} />
-              </GoogleOAuthProvider>
+            <GoogleOAuthProvider clientId="901295510906-4t1cmfsvmuok3p25bg2s0gsc308vg94s.apps.googleusercontent.com">
+              <GoogleButton />
+            </GoogleOAuthProvider>
 
           </form>
 
@@ -146,5 +190,3 @@ const handleSuccess = async (response) => {
     </div>
   );
 };
-
-export default Login;
