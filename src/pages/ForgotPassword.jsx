@@ -10,7 +10,7 @@ const ForgotPassword = () => {
     e.preventDefault();
 
     const { data, error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: "https://yourfrontend.com/reset-password",
+      redirectTo: "https://hawk-shield-frontend.vercel.app/reset-password",
     });
 
     if (error) {
