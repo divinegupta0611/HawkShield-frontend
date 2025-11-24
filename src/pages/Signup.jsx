@@ -16,6 +16,7 @@ const Signup = () => {
 
   const [errors, setErrors] = useState({});
   const [showPassword, setShowPassword] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -50,44 +51,110 @@ const Signup = () => {
     return Object.keys(newErrors).length === 0;
   };
 
- const handleSubmit = async (e) => {
-  e.preventDefault();
-  if (!validateForm()) return;
+  const checkIfUserExists = async (email) => {
+    try {
+      // Query Supabase auth.users to check if email exists
+      const { data, error } = await supabase.rpc('check_user_exists', { 
+        user_email: email.toLowerCase() 
+      });
 
-  console.log("Attempting signup with:", formData);
+      if (error) {
+        console.log("RPC not available, using alternative check");
+        // Alternative: Try to sign in to check if user exists
+        // This won't actually sign them in, just check existence
+        const { error: signInError } = await supabase.auth.signInWithPassword({
+          email: email.toLowerCase(),
+          password: 'dummy_password_for_check'
+        });
 
-  try {
-    const { data, error } = await supabase.auth.signUp({
-      email: formData.email.toLowerCase(), // Supabase stores lowercase emails
-      password: formData.password,
-      options: {
-        data: {
-          full_name: formData.fullName,
-          phone: formData.phone,
-          organization: formData.organization
+        // If error is "Invalid login credentials", user exists but password is wrong
+        // If error is "Email not confirmed", user exists but not verified
+        if (signInError && (
+          signInError.message.includes('Invalid login') || 
+          signInError.message.includes('Email not confirmed')
+        )) {
+          return true; // User exists
         }
+        return false; // User doesn't exist
       }
-    });
 
-    console.log("Supabase signup data:", data);
-    console.log("Supabase signup error:", error);
-
-    if (error) {
-      alert("Signup error: " + error.message);
-      return;
+      return data; // Returns true if user exists
+    } catch (err) {
+      console.error("Error checking user existence:", err);
+      return false; // Assume user doesn't exist on error
     }
+  };
 
-    alert(
-      "Account created! Check your email for verification before logging in."
-    );
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!validateForm()) return;
 
-    // Optional: navigate to login page
-    navigate("/login");
-  } catch (err) {
-    console.error("Unexpected error:", err);
-  }
-};
+    setIsLoading(true);
+    console.log("Attempting signup with:", formData);
 
+    try {
+      // Check if user already exists
+      const userExists = await checkIfUserExists(formData.email);
+
+      if (userExists) {
+        alert("User with this email already exists! Please login instead.");
+        setIsLoading(false);
+        navigate("/login");
+        return;
+      }
+
+      // Proceed with signup
+      const { data, error } = await supabase.auth.signUp({
+        email: formData.email.toLowerCase(),
+        password: formData.password,
+        options: {
+          data: {
+            full_name: formData.fullName,
+            phone: formData.phone,
+            organization: formData.organization
+          }
+        }
+      });
+
+      console.log("Supabase signup data:", data);
+      console.log("Supabase signup error:", error);
+
+      if (error) {
+        // Check for specific Supabase errors
+        if (error.message.includes('already registered')) {
+          alert("User with this email already exists! Please login instead.");
+          navigate("/login");
+        } else {
+          alert("Signup error: " + error.message);
+        }
+        setIsLoading(false);
+        return;
+      }
+
+      // Save user data to localStorage
+      const userData = {
+        name: formData.fullName,
+        email: formData.email.toLowerCase(),
+        phone: formData.phone,
+        organization: formData.organization,
+        userId: data.user?.id,
+        createdAt: new Date().toISOString()
+      };
+
+      localStorage.setItem("hawkshield_user", JSON.stringify(userData));
+      localStorage.setItem("isLoggedIn", "true");
+
+      alert("Account created successfully! Check your email for verification.");
+      
+      // Navigate to home
+      navigate("/");
+      
+    } catch (err) {
+      console.error("Unexpected error:", err);
+      alert("An unexpected error occurred. Please try again.");
+      setIsLoading(false);
+    }
+  };
 
   return (
     <div className="auth-container">
@@ -112,32 +179,81 @@ const Signup = () => {
           <form onSubmit={handleSubmit} className="auth-form">
             <div className="form-group">
               <label htmlFor="fullName">Full Name *</label>
-              <input type="text" id="fullName" name="fullName" value={formData.fullName} onChange={handleChange} placeholder="Enter your full name" className={errors.fullName ? 'error-input' : ''} />
+              <input 
+                type="text" 
+                id="fullName" 
+                name="fullName" 
+                value={formData.fullName} 
+                onChange={handleChange} 
+                placeholder="Enter your full name" 
+                className={errors.fullName ? 'error-input' : ''} 
+                disabled={isLoading}
+              />
               {errors.fullName && <span className="error-message">{errors.fullName}</span>}
             </div>
 
             <div className="form-group">
               <label htmlFor="email">Email Address *</label>
-              <input type="email" id="email" name="email" value={formData.email} onChange={handleChange} placeholder="Enter your email" className={errors.email ? 'error-input' : ''} />
+              <input 
+                type="email" 
+                id="email" 
+                name="email" 
+                value={formData.email} 
+                onChange={handleChange} 
+                placeholder="Enter your email" 
+                className={errors.email ? 'error-input' : ''} 
+                disabled={isLoading}
+              />
               {errors.email && <span className="error-message">{errors.email}</span>}
             </div>
 
             <div className="form-group">
               <label htmlFor="phone">Phone Number</label>
-              <input type="tel" id="phone" name="phone" value={formData.phone} onChange={handleChange} placeholder="Enter your phone number" className={errors.phone ? 'error-input' : ''} />
+              <input 
+                type="tel" 
+                id="phone" 
+                name="phone" 
+                value={formData.phone} 
+                onChange={handleChange} 
+                placeholder="Enter your phone number" 
+                className={errors.phone ? 'error-input' : ''} 
+                disabled={isLoading}
+              />
               {errors.phone && <span className="error-message">{errors.phone}</span>}
             </div>
 
             <div className="form-group">
               <label htmlFor="organization">Organization (Optional)</label>
-              <input type="text" id="organization" name="organization" value={formData.organization} onChange={handleChange} placeholder="Enter your organization name" />
+              <input 
+                type="text" 
+                id="organization" 
+                name="organization" 
+                value={formData.organization} 
+                onChange={handleChange} 
+                placeholder="Enter your organization name" 
+                disabled={isLoading}
+              />
             </div>
 
             <div className="form-group">
               <label htmlFor="password">Password *</label>
               <div className="password-input-wrapper">
-                <input type={showPassword ? 'text' : 'password'} id="password" name="password" value={formData.password} onChange={handleChange} placeholder="Create a password" className={errors.password ? 'error-input' : ''} />
-                <button type="button" className="toggle-password" onClick={() => setShowPassword(!showPassword)}>
+                <input 
+                  type={showPassword ? 'text' : 'password'} 
+                  id="password" 
+                  name="password" 
+                  value={formData.password} 
+                  onChange={handleChange} 
+                  placeholder="Create a password" 
+                  className={errors.password ? 'error-input' : ''} 
+                  disabled={isLoading}
+                />
+                <button 
+                  type="button" 
+                  className="toggle-password" 
+                  onClick={() => setShowPassword(!showPassword)}
+                  disabled={isLoading}
+                >
                   {showPassword ? '👁️' : '👁️‍🗨️'}
                 </button>
               </div>
@@ -146,11 +262,26 @@ const Signup = () => {
 
             <div className="form-group">
               <label htmlFor="confirmPassword">Confirm Password *</label>
-              <input type={showPassword ? 'text' : 'password'} id="confirmPassword" name="confirmPassword" value={formData.confirmPassword} onChange={handleChange} placeholder="Confirm your password" className={errors.confirmPassword ? 'error-input' : ''} />
+              <input 
+                type={showPassword ? 'text' : 'password'} 
+                id="confirmPassword" 
+                name="confirmPassword" 
+                value={formData.confirmPassword} 
+                onChange={handleChange} 
+                placeholder="Confirm your password" 
+                className={errors.confirmPassword ? 'error-input' : ''} 
+                disabled={isLoading}
+              />
               {errors.confirmPassword && <span className="error-message">{errors.confirmPassword}</span>}
             </div>
 
-            <button type="submit" className="auth-button">Create Account</button>
+            <button 
+              type="submit" 
+              className="auth-button"
+              disabled={isLoading}
+            >
+              {isLoading ? 'Creating Account...' : 'Create Account'}
+            </button>
           </form>
 
           <div className="auth-footer">

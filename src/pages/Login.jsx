@@ -1,50 +1,67 @@
 import React, { useState } from 'react';
 import '../style/AuthCSS.css';
 import { supabase } from "../SupabaseClient";
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 
-
-// Use Supabase OAuth for Google sign-in
+// Google OAuth Button
 const GoogleButton = () => {
   const handleGoogleSignIn = async () => {
     try {
-      const redirectTo = import.meta.env.VITE_SUPABASE_REDIRECT || (typeof window !== 'undefined' ? `${window.location.origin}/` : undefined);
-      console.log('Initiating Supabase Google OAuth, redirectTo:', redirectTo);
       const { data, error } = await supabase.auth.signInWithOAuth({
-        provider: 'google',
-        options: redirectTo ? { redirectTo } : undefined,
+        provider: "google",
+        options: {
+          redirectTo: `${window.location.origin}/auth-success`
+        }
       });
+
       if (error) {
-        console.error('Supabase signInWithOAuth error:', error);
-        alert(error.message || 'Google sign-in failed');
+        console.error("Google OAuth error:", error);
         return;
       }
-      console.log('Supabase signInWithOAuth data:', data);
-      // In most flows Supabase will redirect the browser to the provider.
-      // If it returns a url, you can navigate to it manually:
-      if (data?.url) window.location.href = data.url;
+
+      // No user yet → Supabase will redirect
     } catch (err) {
-      console.error('Unexpected OAuth error:', err);
-      alert('Google sign-in failed. Check console for details.');
+      console.error("Unexpected OAuth error:", err);
     }
   };
 
   return (
-    <button type="button" onClick={handleGoogleSignIn} className="social-button google-button" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px', padding: '10px 20px', border: '1px solid #ddd', borderRadius: '5px', background: 'white', cursor: 'pointer', width: '100%' }}>
-      <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google" style={{ width: '20px', height: '20px' }} />
+    <button 
+      type="button" 
+      onClick={handleGoogleSignIn} 
+      className="social-button google-button"
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: '10px',
+        padding: '12px 20px',
+        border: '1px solid #ddd',
+        borderRadius: '5px',
+        background: 'white',
+        cursor: 'pointer',
+        width: '100%',
+        fontSize: '14px',
+        fontWeight: '500'
+      }}
+    >
+      <img 
+        src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" 
+        alt="Google" 
+        style={{ width: '20px', height: '20px' }} 
+      />
       Sign in with Google
     </button>
   );
 };
 
 const Login = () => {
-  console.log("Client ID:", import.meta.env.VITE_GOOGLE_CLIENT_ID);
-  console.log("All env variables:", import.meta.env);
-  
+  const navigate = useNavigate();
   const [formData, setFormData] = useState({ email: '', password: '' });
   const [errors, setErrors] = useState({});
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -73,29 +90,48 @@ const Login = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!validateForm()) return;
+
+    setIsLoading(true);
+
     try {
-      // Use Supabase Auth to sign in with email and password
       const { data, error } = await supabase.auth.signInWithPassword({
         email: formData.email,
         password: formData.password,
       });
 
       if (error) {
-        console.error('Supabase signIn error:', error);
+        console.error('Login error:', error);
         alert(error.message || 'Login failed');
+        setIsLoading(false);
         return;
       }
 
-      console.log('Supabase signIn data:', data);
-      // data.session.user may contain user info depending on your Supabase settings
-      const userInfo = data?.user || { email: formData.email };
-      localStorage.setItem("hawkshield_user", JSON.stringify({ name: userInfo.user_metadata?.fullName || userInfo.email, email: userInfo.email }));
+      console.log('Login successful:', data);
+      console.log('Login successful:', data);
+
+      const user = data.user;
+
+      // Build a unified login object
+      const hawkUser = {
+        isLoggedIn: true,
+        name: user.user_metadata.full_name || "",
+        email: user.email || "",
+        phone: user.user_metadata.phone || "",
+        avatar_url: user.user_metadata.avatar_url || "", 
+        provider: "email"
+      };
+
+      // Save in ONE place exactly like GoogleLogin
+      localStorage.setItem("hawkshield_user", JSON.stringify(hawkUser));
       localStorage.setItem("isLoggedIn", "true");
+
       alert("Login successful!");
-      window.location.href = "/";
+      navigate("/");
+
     } catch (err) {
       console.error('Unexpected login error:', err);
       alert('Login failed. Please try again.');
+      setIsLoading(false);
     }
   };
 
@@ -120,15 +156,38 @@ const Login = () => {
           <form onSubmit={handleSubmit} className="auth-form">
             <div className="form-group">
               <label htmlFor="email">Email Address</label>
-              <input type="email" id="email" name="email" value={formData.email} onChange={handleChange} placeholder="Enter your email" className={errors.email ? 'error-input' : ''} />
+              <input 
+                type="email" 
+                id="email" 
+                name="email" 
+                value={formData.email} 
+                onChange={handleChange} 
+                placeholder="Enter your email" 
+                className={errors.email ? 'error-input' : ''} 
+                disabled={isLoading}
+              />
               {errors.email && <span className="error-message">{errors.email}</span>}
             </div>
 
             <div className="form-group">
               <label htmlFor="password">Password</label>
               <div className="password-input-wrapper">
-                <input type={showPassword ? 'text' : 'password'} id="password" name="password" value={formData.password} onChange={handleChange} placeholder="Enter your password" className={errors.password ? 'error-input' : ''} />
-                <button type="button" className="toggle-password" onClick={() => setShowPassword(!showPassword)}>
+                <input 
+                  type={showPassword ? 'text' : 'password'} 
+                  id="password" 
+                  name="password" 
+                  value={formData.password} 
+                  onChange={handleChange} 
+                  placeholder="Enter your password" 
+                  className={errors.password ? 'error-input' : ''} 
+                  disabled={isLoading}
+                />
+                <button 
+                  type="button" 
+                  className="toggle-password" 
+                  onClick={() => setShowPassword(!showPassword)}
+                  disabled={isLoading}
+                >
                   {showPassword ? '👁️' : '👁️‍🗨️'}
                 </button>
               </div>
@@ -137,18 +196,28 @@ const Login = () => {
 
             <div className="form-options">
               <label className="checkbox-label">
-                <input type="checkbox" checked={rememberMe} onChange={(e) => setRememberMe(e.target.checked)} />
+                <input 
+                  type="checkbox" 
+                  checked={rememberMe} 
+                  onChange={(e) => setRememberMe(e.target.checked)}
+                  disabled={isLoading}
+                />
                 Remember me
               </label>
               <Link to="/forgot-password" className="forgot-link">Forgot Password?</Link>
             </div>
 
-            <button type="submit" className="auth-button">Login</button>
+            <button 
+              type="submit" 
+              className="auth-button"
+              disabled={isLoading}
+            >
+              {isLoading ? 'Logging in...' : 'Login'}
+            </button>
 
             <div className="divider"><span>OR</span></div>
 
             <GoogleButton />
-
           </form>
 
           <div className="auth-footer">
@@ -160,4 +229,4 @@ const Login = () => {
   );
 };
 
-export default Login
+export default Login;

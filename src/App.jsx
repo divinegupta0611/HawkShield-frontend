@@ -10,6 +10,8 @@ import Detect from "./pages/Detect";
 import ForgotPassword from "./pages/ForgotPassword";
 import ResetPassword from "./pages/ResetPassword";
 import AuthCallback from "./pages/AuthCallback";
+import AuthSuccess from "./pages/AuthSuccess.jsx";
+import Stream from "./pages/Stream.jsx";
 export default function App() {
   return (
     <Routes>
@@ -24,7 +26,8 @@ export default function App() {
       <Route path="/forgot-password" element={<ForgotPassword />} />
       <Route path="/reset-password" element={<ResetPassword />} />
       <Route path="/auth/callback" element={<AuthCallback />} />
-
+      <Route path="/auth-success" element={<AuthSuccess />} />
+      <Route path="/stream" element={<Stream />} />
     </Routes>
   );
 }
