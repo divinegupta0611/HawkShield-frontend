@@ -1,33 +1,73 @@
 import React, { useState, useRef, useEffect } from "react";
 import { supabase } from "../SupabaseClient";
-import '../style/DashboardCSS.css';
-
-// Mock NavBar component - replace with your actual import
-const NavBar = () => (
-  <div style={{ 
-    background: "#1e293b", 
-    padding: "15px 30px", 
-    color: "white",
-    boxShadow: "0 2px 4px rgba(0,0,0,0.1)"
-  }}>
-    <h1 style={{ margin: 0, fontSize: "20px" }}>CCTV System</h1>
-  </div>
-);
+import NavBar from "../components/NavBar";
 
 export default function Dashboard() {
-  const [cameras, setCameras] = useState([]); // Only user-added cameras
-  const [activeStreams, setActiveStreams] = useState({}); // cameraId -> {pc, ws, videoRef}
+  const [cameras, setCameras] = useState([]);
+  const [activeStreams, setActiveStreams] = useState({});
   const [showPopup, setShowPopup] = useState(false);
   const [popupCameraName, setPopupCameraName] = useState("");
   const [popupCameraId, setPopupCameraId] = useState("");
   const [popupError, setPopupError] = useState("");
+  const [detectionLogs, setDetectionLogs] = useState([]);
+  const [cameraDetections, setCameraDetections] = useState({});
 
-  // ---------------- WebRTC Configuration ----------------
+  const canvasRefs = useRef({});
+
   const rtcConfig = {
     iceServers: [
       { urls: "stun:stun.l.google.com:19302" },
       { urls: "stun:stun1.l.google.com:19302" }
     ]
+  };
+
+  // ---------------- Draw Bounding Boxes ----------------
+  const drawBoundingBoxes = (camId, detections) => {
+    const canvas = canvasRefs.current[camId];
+    const videoRef = activeStreams[camId]?.videoRef?.current;
+    
+    if (!canvas || !videoRef) return;
+
+    const ctx = canvas.getContext('2d');
+    canvas.width = videoRef.videoWidth;
+    canvas.height = videoRef.videoHeight;
+    
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    
+    detections.forEach(det => {
+      const [x1, y1, x2, y2] = det.bbox;
+      const width = x2 - x1;
+      const height = y2 - y1;
+      
+      const color = det.type === 'knife' ? '#ef4444' : '#22c55e';
+      
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 3;
+      ctx.strokeRect(x1, y1, width, height);
+      
+      const label = `${det.class} ${(det.confidence * 100).toFixed(0)}%`;
+      ctx.font = '16px Arial';
+      const textWidth = ctx.measureText(label).width;
+      ctx.fillStyle = color;
+      ctx.fillRect(x1, y1 - 25, textWidth + 10, 25);
+      
+      ctx.fillStyle = 'white';
+      ctx.fillText(label, x1 + 5, y1 - 7);
+    });
+  };
+
+  // ---------------- Add Detection Log ----------------
+  const addDetectionLog = (cameraName, detectionType, className, timestamp) => {
+    const newLog = {
+      id: Date.now(),
+      cameraName,
+      detectionType,
+      className,
+      timestamp,
+      isAlert: detectionType === 'knife' || className.toLowerCase().includes('without')
+    };
+    
+    setDetectionLogs(prev => [newLog, ...prev].slice(0, 50)); // Keep last 50 logs
   };
 
   // ---------------- Verify and Add Camera ----------------
@@ -40,7 +80,6 @@ export default function Dashboard() {
     }
 
     try {
-      // Verify camera exists in Supabase
       const { data, error } = await supabase
         .from("Cameras")
         .select("*")
@@ -53,22 +92,18 @@ export default function Dashboard() {
         return;
       }
 
-      // Check if camera already added
       if (cameras.find(cam => cam.id === data.id)) {
         setPopupError("Camera already added to dashboard.");
         return;
       }
 
-      // Camera verified, add to cameras list
       setCameras(prev => [...prev, data]);
       
-      // Close popup and reset fields
       setShowPopup(false);
       setPopupCameraName("");
       setPopupCameraId("");
       setPopupError("");
       
-      // Auto-start watching the camera
       setTimeout(() => {
         joinStream(data.id);
       }, 500);
@@ -88,15 +123,15 @@ export default function Dashboard() {
 
     console.log("Joining stream for camera:", camId);
 
-    // Create WebSocket connection
     const ws = new WebSocket("ws://localhost:8000/ws/camera/");
     const pc = new RTCPeerConnection(rtcConfig);
     const videoRef = React.createRef();
+    const canvasRef = document.createElement('canvas');
+    canvasRefs.current[camId] = canvasRef;
 
-    // Store active stream
     setActiveStreams(prev => ({
       ...prev,
-      [camId]: { pc, ws, videoRef }
+      [camId]: { pc, ws, videoRef, canvasRef }
     }));
 
     ws.onopen = () => {
@@ -111,11 +146,9 @@ export default function Dashboard() {
       const data = JSON.parse(message.data);
       console.log("Received message:", data);
 
-      // Handle offer from streamer
       if (data.action === "offer") {
         console.log("Received offer from streamer");
         
-        // Handle incoming track
         pc.ontrack = (event) => {
           console.log("Received track:", event.streams[0]);
           if (videoRef.current) {
@@ -126,7 +159,6 @@ export default function Dashboard() {
           }
         };
 
-        // Handle ICE candidates
         pc.onicecandidate = (event) => {
           if (event.candidate) {
             console.log("Sending ICE candidate to streamer");
@@ -138,7 +170,6 @@ export default function Dashboard() {
           }
         };
 
-        // Monitor connection state
         pc.onconnectionstatechange = () => {
           console.log("Connection state:", pc.connectionState);
         };
@@ -163,7 +194,6 @@ export default function Dashboard() {
         }
       }
 
-      // Handle ICE candidates from streamer
       if (data.action === "ice-candidate") {
         try {
           await pc.addIceCandidate(new RTCIceCandidate(data.candidate));
@@ -173,7 +203,29 @@ export default function Dashboard() {
         }
       }
 
-      // Handle streamer left
+      // Handle detections
+      if (data.action === "detections") {
+        const detections = data.detections;
+        setCameraDetections(prev => ({
+          ...prev,
+          [camId]: detections
+        }));
+        
+        drawBoundingBoxes(camId, detections);
+        
+        // Add logs for new detections
+        if (detections.length > 0) {
+          detections.forEach(det => {
+            addDetectionLog(
+              data.camera_name || cameras.find(c => c.id === camId)?.Name || 'Unknown',
+              det.type,
+              det.class,
+              data.timestamp || new Date().toLocaleTimeString()
+            );
+          });
+        }
+      }
+
       if (data.action === "streamer_left") {
         console.log("Streamer left camera:", camId);
         stopWatching(camId);
@@ -196,10 +248,18 @@ export default function Dashboard() {
       if (stream.pc) stream.pc.close();
       if (stream.ws) stream.ws.close();
       
+      delete canvasRefs.current[camId];
+      
       setActiveStreams(prev => {
         const newStreams = { ...prev };
         delete newStreams[camId];
         return newStreams;
+      });
+      
+      setCameraDetections(prev => {
+        const newDetections = { ...prev };
+        delete newDetections[camId];
+        return newDetections;
       });
       
       console.log("Stopped watching camera:", camId);
@@ -224,193 +284,291 @@ export default function Dashboard() {
   return (
     <div style={{ background: "#f8fafc", minHeight: "100vh" }}>
       <NavBar />
-      <div style={{ padding: "30px", maxWidth: "1400px", margin: "0 auto" }}>
-        <div style={{ 
-          display: "flex", 
-          justifyContent: "space-between", 
-          alignItems: "center",
-          marginBottom: "30px"
-        }}>
-          <h2 style={{ margin: 0, color: "#1e293b", fontSize: "28px", fontWeight: "700" }}>
-            📺 CCTV Dashboard
-          </h2>
-          <button
-            onClick={() => setShowPopup(true)}
-            style={{ 
-              padding: "12px 24px", 
-              background: "#3b82f6", 
-              color: "white", 
-              borderRadius: "8px", 
-              cursor: "pointer",
-              border: "none",
-              fontSize: "16px",
-              fontWeight: "600",
-              boxShadow: "0 2px 8px rgba(59, 130, 246, 0.3)",
-              transition: "all 0.2s"
-            }}
-            onMouseOver={(e) => e.target.style.background = "#2563eb"}
-            onMouseOut={(e) => e.target.style.background = "#3b82f6"}
-          >
-            + Add Camera
-          </button>
-        </div>
-
-        {cameras.length === 0 ? (
+      <div style={{ display: "flex", gap: "20px", padding: "30px", maxWidth: "1600px", margin: "0 auto" }}>
+        {/* Left Side - Camera Grid */}
+        <div style={{ flex: 1 }}>
           <div style={{ 
-            textAlign: "center", 
-            padding: "50px", 
-            background: "white", 
-            borderRadius: "12px",
-            border: "2px dashed #cbd5e1",
-            boxShadow: "0 1px 3px rgba(0,0,0,0.1)"
+            display: "flex", 
+            justifyContent: "space-between", 
+            alignItems: "center",
+            marginBottom: "30px"
           }}>
-            <p style={{ color: "#64748b", fontSize: "18px", margin: "0 0 10px 0" }}>No cameras available</p>
-            <p style={{ color: "#94a3b8", fontSize: "14px", margin: 0 }}>Click "Add Camera" to connect a camera</p>
+            <h2 style={{ margin: 0, color: "#1e293b", fontSize: "28px", fontWeight: "700" }}>
+              📺 Live Cameras
+            </h2>
+            <button
+              onClick={() => setShowPopup(true)}
+              style={{ 
+                padding: "12px 24px", 
+                background: "#3b82f6", 
+                color: "white", 
+                borderRadius: "8px", 
+                cursor: "pointer",
+                border: "none",
+                fontSize: "16px",
+                fontWeight: "600",
+                boxShadow: "0 2px 8px rgba(59, 130, 246, 0.3)",
+                transition: "all 0.2s"
+              }}
+              onMouseOver={(e) => e.target.style.background = "#2563eb"}
+              onMouseOut={(e) => e.target.style.background = "#3b82f6"}
+            >
+              + Add Camera
+            </button>
           </div>
-        ) : (
-          <div style={{ 
-            display: "grid", 
-            gridTemplateColumns: "repeat(auto-fill, minmax(400px, 1fr))", 
-            gap: "20px" 
-          }}>
-            {cameras.map((cam) => {
-              const isWatching = activeStreams[cam.id];
-              
-              return (
-                <div
-                  key={cam.id}
-                  style={{
-                    background: "white",
-                    borderRadius: "12px",
-                    padding: "20px",
-                    border: isWatching ? "2px solid #3b82f6" : "2px solid #e2e8f0",
-                    boxShadow: isWatching ? "0 4px 12px rgba(59, 130, 246, 0.2)" : "0 1px 3px rgba(0,0,0,0.1)",
-                    transition: "all 0.3s"
-                  }}
-                >
-                  <div style={{ 
-                    display: "flex", 
-                    justifyContent: "space-between", 
-                    alignItems: "center",
-                    marginBottom: "15px"
-                  }}>
-                    <div>
-                      <h3 style={{ margin: "0 0 5px 0", color: "#1e293b", fontWeight: "600" }}>
-                        📹 {cam.Name}
-                      </h3>
-                      <p style={{ margin: 0, color: "#64748b", fontSize: "12px" }}>
-                        ID: {cam.id.substring(0, 8)}...
-                      </p>
-                    </div>
-                    <div style={{ display: "flex", gap: "8px" }}>
-                      {!isWatching ? (
-                        <button
-                          onClick={() => joinStream(cam.id)}
-                          style={{ 
-                            padding: "8px 16px", 
-                            borderRadius: "6px", 
-                            cursor: "pointer", 
-                            background: "#3b82f6", 
-                            color: "white",
-                            border: "none",
-                            fontWeight: "600",
-                            fontSize: "14px",
-                            transition: "all 0.2s"
-                          }}
-                          onMouseOver={(e) => e.target.style.background = "#2563eb"}
-                          onMouseOut={(e) => e.target.style.background = "#3b82f6"}
-                        >
-                          Watch
-                        </button>
-                      ) : (
-                        <button
-                          onClick={() => stopWatching(cam.id)}
-                          style={{ 
-                            padding: "8px 16px", 
-                            borderRadius: "6px", 
-                            cursor: "pointer", 
-                            background: "#ef4444", 
-                            color: "white",
-                            border: "none",
-                            fontWeight: "600",
-                            fontSize: "14px",
-                            transition: "all 0.2s"
-                          }}
-                          onMouseOver={(e) => e.target.style.background = "#dc2626"}
-                          onMouseOut={(e) => e.target.style.background = "#ef4444"}
-                        >
-                          Stop
-                        </button>
-                      )}
-                      <button
-                        onClick={() => removeCamera(cam.id)}
-                        style={{ 
-                          padding: "8px 12px", 
-                          borderRadius: "6px", 
-                          cursor: "pointer", 
-                          background: "#64748b", 
-                          color: "white",
-                          border: "none",
-                          fontWeight: "600",
-                          fontSize: "14px",
-                          transition: "all 0.2s"
-                        }}
-                        onMouseOver={(e) => e.target.style.background = "#475569"}
-                        onMouseOut={(e) => e.target.style.background = "#64748b"}
-                      >
-                        ✕
-                      </button>
-                    </div>
-                  </div>
 
-                  {/* Video Window */}
-                  {isWatching && (
-                    <div style={{ marginTop: "15px" }}>
-                      <video
-                        ref={activeStreams[cam.id].videoRef}
-                        autoPlay
-                        playsInline
-                        style={{ 
-                          width: "100%", 
-                          borderRadius: "8px",
-                          background: "#000",
-                          aspectRatio: "16/9"
-                        }}
-                      />
-                      <div style={{ 
-                        marginTop: "10px", 
-                        padding: "8px", 
-                        background: "#f1f5f9", 
-                        borderRadius: "6px",
-                        textAlign: "center"
-                      }}>
-                        <span style={{ color: "#ef4444", fontSize: "12px", fontWeight: "700" }}>
-                          🔴 LIVE
-                        </span>
+          {cameras.length === 0 ? (
+            <div style={{ 
+              textAlign: "center", 
+              padding: "50px", 
+              background: "white", 
+              borderRadius: "12px",
+              border: "2px dashed #cbd5e1",
+              boxShadow: "0 1px 3px rgba(0,0,0,0.1)"
+            }}>
+              <p style={{ color: "#64748b", fontSize: "18px", margin: "0 0 10px 0" }}>No cameras available</p>
+              <p style={{ color: "#94a3b8", fontSize: "14px", margin: 0 }}>Click "Add Camera" to connect a camera</p>
+            </div>
+          ) : (
+            <div style={{ 
+              display: "grid", 
+              gridTemplateColumns: "repeat(auto-fill, minmax(400px, 1fr))", 
+              gap: "20px" 
+            }}>
+              {cameras.map((cam) => {
+                const isWatching = activeStreams[cam.id];
+                const detections = cameraDetections[cam.id] || [];
+                
+                return (
+                  <div
+                    key={cam.id}
+                    style={{
+                      background: "white",
+                      borderRadius: "12px",
+                      padding: "20px",
+                      border: isWatching ? "2px solid #3b82f6" : "2px solid #e2e8f0",
+                      boxShadow: isWatching ? "0 4px 12px rgba(59, 130, 246, 0.2)" : "0 1px 3px rgba(0,0,0,0.1)",
+                      transition: "all 0.3s"
+                    }}
+                  >
+                    <div style={{ 
+                      display: "flex", 
+                      justifyContent: "space-between", 
+                      alignItems: "center",
+                      marginBottom: "15px"
+                    }}>
+                      <div>
+                        <h3 style={{ margin: "0 0 5px 0", color: "#1e293b", fontWeight: "600" }}>
+                          📹 {cam.Name}
+                        </h3>
+                        <p style={{ margin: 0, color: "#64748b", fontSize: "12px" }}>
+                          ID: {cam.id.substring(0, 8)}...
+                        </p>
+                      </div>
+                      <div style={{ display: "flex", gap: "8px" }}>
+                        {!isWatching ? (
+                          <button
+                            onClick={() => joinStream(cam.id)}
+                            style={{ 
+                              padding: "8px 16px", 
+                              borderRadius: "6px", 
+                              cursor: "pointer", 
+                              background: "#3b82f6", 
+                              color: "white",
+                              border: "none",
+                              fontWeight: "600",
+                              fontSize: "14px",
+                              transition: "all 0.2s"
+                            }}
+                            onMouseOver={(e) => e.target.style.background = "#2563eb"}
+                            onMouseOut={(e) => e.target.style.background = "#3b82f6"}
+                          >
+                            Watch
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => stopWatching(cam.id)}
+                            style={{ 
+                              padding: "8px 16px", 
+                              borderRadius: "6px", 
+                              cursor: "pointer", 
+                              background: "#ef4444", 
+                              color: "white",
+                              border: "none",
+                              fontWeight: "600",
+                              fontSize: "14px",
+                              transition: "all 0.2s"
+                            }}
+                            onMouseOver={(e) => e.target.style.background = "#dc2626"}
+                            onMouseOut={(e) => e.target.style.background = "#ef4444"}
+                          >
+                            Stop
+                          </button>
+                        )}
+                        <button
+                          onClick={() => removeCamera(cam.id)}
+                          style={{ 
+                            padding: "8px 12px", 
+                            borderRadius: "6px", 
+                            cursor: "pointer", 
+                            background: "#64748b", 
+                            color: "white",
+                            border: "none",
+                            fontWeight: "600",
+                            fontSize: "14px",
+                            transition: "all 0.2s"
+                          }}
+                          onMouseOver={(e) => e.target.style.background = "#475569"}
+                          onMouseOut={(e) => e.target.style.background = "#64748b"}
+                        >
+                          ✕
+                        </button>
                       </div>
                     </div>
-                  )}
 
-                  {!isWatching && (
-                    <div style={{ 
-                      width: "100%", 
-                      aspectRatio: "16/9",
-                      background: "#f1f5f9",
+                    {isWatching && (
+                      <div style={{ marginTop: "15px" }}>
+                        <div style={{ position: "relative" }}>
+                          <video
+                            ref={activeStreams[cam.id].videoRef}
+                            autoPlay
+                            playsInline
+                            style={{ 
+                              width: "100%", 
+                              borderRadius: "8px",
+                              background: "#000",
+                              aspectRatio: "16/9",
+                              display: "block"
+                            }}
+                          />
+                          <canvas
+                            ref={(el) => { canvasRefs.current[cam.id] = el; }}
+                            style={{
+                              position: "absolute",
+                              top: 0,
+                              left: 0,
+                              width: "100%",
+                              height: "100%",
+                              pointerEvents: "none"
+                            }}
+                          />
+                        </div>
+                        <div style={{ 
+                          marginTop: "10px", 
+                          padding: "8px", 
+                          background: "#f1f5f9", 
+                          borderRadius: "6px",
+                          display: "flex",
+                          justifyContent: "space-between",
+                          alignItems: "center"
+                        }}>
+                          <span style={{ color: "#ef4444", fontSize: "12px", fontWeight: "700" }}>
+                            🔴 LIVE
+                          </span>
+                          <div>
+                            <span style={{ color: "#22c55e", fontSize: "11px", marginRight: "10px" }}>
+                              🎭 {detections.filter(d => d.type === 'face_mask').length}
+                            </span>
+                            <span style={{ color: "#ef4444", fontSize: "11px" }}>
+                              🔪 {detections.filter(d => d.type === 'knife').length}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {!isWatching && (
+                      <div style={{ 
+                        width: "100%", 
+                        aspectRatio: "16/9",
+                        background: "#f1f5f9",
+                        borderRadius: "8px",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        marginTop: "15px",
+                        border: "1px solid #e2e8f0"
+                      }}>
+                        <p style={{ color: "#94a3b8" }}>Click Watch to stream</p>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* Right Side - Detection Logs */}
+        <div style={{ width: "350px" }}>
+          <h2 style={{ margin: "0 0 20px 0", color: "#1e293b", fontSize: "24px", fontWeight: "700" }}>
+            📋 Detection Logs
+          </h2>
+          
+          <div style={{ 
+            background: "white", 
+            borderRadius: "12px", 
+            padding: "20px",
+            boxShadow: "0 1px 3px rgba(0,0,0,0.1)",
+            maxHeight: "calc(100vh - 180px)",
+            overflowY: "auto"
+          }}>
+            {detectionLogs.length === 0 ? (
+              <div style={{ textAlign: "center", padding: "30px 0" }}>
+                <p style={{ color: "#94a3b8", margin: 0 }}>No detections yet</p>
+              </div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+                {detectionLogs.map(log => (
+                  <div
+                    key={log.id}
+                    style={{
+                      padding: "12px",
                       borderRadius: "8px",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      marginTop: "15px",
-                      border: "1px solid #e2e8f0"
+                      background: log.isAlert ? "#fee2e2" : "#dcfce7",
+                      border: `1px solid ${log.isAlert ? "#fecaca" : "#bbf7d0"}`
+                    }}
+                  >
+                    <div style={{ 
+                      display: "flex", 
+                      justifyContent: "space-between", 
+                      marginBottom: "5px" 
                     }}>
-                      <p style={{ color: "#94a3b8" }}>Click Watch to stream</p>
+                      <span style={{ 
+                        color: log.isAlert ? "#dc2626" : "#16a34a", 
+                        fontSize: "12px",
+                        fontWeight: "700"
+                      }}>
+                        {log.isAlert ? "⚠️ ALERT" : "✓ DETECTED"}
+                      </span>
+                      <span style={{ 
+                        color: log.isAlert ? "#991b1b" : "#15803d", 
+                        fontSize: "11px" 
+                      }}>
+                        {log.timestamp}
+                      </span>
                     </div>
-                  )}
-                </div>
-              );
-            })}
+                    <p style={{ 
+                      margin: "5px 0 0 0", 
+                      color: log.isAlert ? "#dc2626" : "#16a34a",
+                      fontSize: "13px",
+                      fontWeight: "600"
+                    }}>
+                      {log.detectionType === 'knife' ? '🔪' : '🎭'} {log.className}
+                    </p>
+                    <p style={{ 
+                      margin: "3px 0 0 0", 
+                      color: log.isAlert ? "#991b1b" : "#15803d",
+                      fontSize: "11px"
+                    }}>
+                      Camera: {log.cameraName}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
-        )}
+        </div>
       </div>
 
       {/* Add Camera Popup */}

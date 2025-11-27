@@ -1,6 +1,6 @@
 import React, { useRef, useState, useEffect } from "react";
-import NavBar from "../components/NavBar";
 import { supabase } from "../SupabaseClient";
+import NavBar from "../components/NavBar";
 
 export default function Stream() {
   const videoRef = useRef(null);
@@ -78,10 +78,11 @@ export default function Stream() {
     // Convert to base64
     const frameData = canvas.toDataURL('image/jpeg', 0.8);
     
-    // Send to backend
+    // Send to backend with camera name
     wsRef.current.send(JSON.stringify({
       action: "video_frame",
-      frame: frameData
+      frame: frameData,
+      camera_name: cameraName
     }));
   };
 
