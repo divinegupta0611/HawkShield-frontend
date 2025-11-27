@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from "react";
 import { supabase } from "../SupabaseClient";
 import NavBar from "../components/NavBar";
+import "../style/DashboardCSS.css";
 
 export default function Dashboard() {
   const [cameras, setCameras] = useState([]);
@@ -67,7 +68,7 @@ export default function Dashboard() {
       isAlert: detectionType === 'knife' || className.toLowerCase().includes('without')
     };
     
-    setDetectionLogs(prev => [newLog, ...prev].slice(0, 50)); // Keep last 50 logs
+    setDetectionLogs(prev => [newLog, ...prev].slice(0, 50));
   };
 
   // ---------------- Verify and Add Camera ----------------
@@ -203,7 +204,6 @@ export default function Dashboard() {
         }
       }
 
-      // Handle detections
       if (data.action === "detections") {
         const detections = data.detections;
         setCameraDetections(prev => ({
@@ -213,7 +213,6 @@ export default function Dashboard() {
         
         drawBoundingBoxes(camId, detections);
         
-        // Add logs for new detections
         if (detections.length > 0) {
           detections.forEach(det => {
             addDetectionLog(
@@ -282,214 +281,89 @@ export default function Dashboard() {
   }, []);
 
   return (
-    <div style={{ background: "#f8fafc", minHeight: "100vh" }}>
+    <div className="dashboard-container">
       <NavBar />
-      <div style={{ display: "flex", gap: "20px", padding: "30px", maxWidth: "1600px", margin: "0 auto" }}>
+      <div className="dashboard-content">
         {/* Left Side - Camera Grid */}
-        <div style={{ flex: 1 }}>
-          <div style={{ 
-            display: "flex", 
-            justifyContent: "space-between", 
-            alignItems: "center",
-            marginBottom: "30px"
-          }}>
-            <h2 style={{ margin: 0, color: "#1e293b", fontSize: "28px", fontWeight: "700" }}>
-              📺 Live Cameras
+        <div className="cameras-section">
+          <div className="section-header">
+            <h2 className="section-title">
+              <span className="icon">📺</span>
+              Dashboard - Live Cameras
             </h2>
-            <button
-              onClick={() => setShowPopup(true)}
-              style={{ 
-                padding: "12px 24px", 
-                background: "#3b82f6", 
-                color: "white", 
-                borderRadius: "8px", 
-                cursor: "pointer",
-                border: "none",
-                fontSize: "16px",
-                fontWeight: "600",
-                boxShadow: "0 2px 8px rgba(59, 130, 246, 0.3)",
-                transition: "all 0.2s"
-              }}
-              onMouseOver={(e) => e.target.style.background = "#2563eb"}
-              onMouseOut={(e) => e.target.style.background = "#3b82f6"}
-            >
-              + Add Camera
+            <button className="btn-add-camera" onClick={() => setShowPopup(true)}>
+              <span className="btn-icon">+</span>
+              Add Camera
             </button>
           </div>
 
           {cameras.length === 0 ? (
-            <div style={{ 
-              textAlign: "center", 
-              padding: "50px", 
-              background: "white", 
-              borderRadius: "12px",
-              border: "2px dashed #cbd5e1",
-              boxShadow: "0 1px 3px rgba(0,0,0,0.1)"
-            }}>
-              <p style={{ color: "#64748b", fontSize: "18px", margin: "0 0 10px 0" }}>No cameras available</p>
-              <p style={{ color: "#94a3b8", fontSize: "14px", margin: 0 }}>Click "Add Camera" to connect a camera</p>
+            <div className="empty-state">
+              <div className="empty-icon">📹</div>
+              <p className="empty-title">No cameras available</p>
+              <p className="empty-subtitle">Click "Add Camera" to connect a camera</p>
             </div>
           ) : (
-            <div style={{ 
-              display: "grid", 
-              gridTemplateColumns: "repeat(auto-fill, minmax(400px, 1fr))", 
-              gap: "20px" 
-            }}>
+            <div className="cameras-grid">
               {cameras.map((cam) => {
                 const isWatching = activeStreams[cam.id];
                 const detections = cameraDetections[cam.id] || [];
                 
                 return (
-                  <div
-                    key={cam.id}
-                    style={{
-                      background: "white",
-                      borderRadius: "12px",
-                      padding: "20px",
-                      border: isWatching ? "2px solid #3b82f6" : "2px solid #e2e8f0",
-                      boxShadow: isWatching ? "0 4px 12px rgba(59, 130, 246, 0.2)" : "0 1px 3px rgba(0,0,0,0.1)",
-                      transition: "all 0.3s"
-                    }}
-                  >
-                    <div style={{ 
-                      display: "flex", 
-                      justifyContent: "space-between", 
-                      alignItems: "center",
-                      marginBottom: "15px"
-                    }}>
-                      <div>
-                        <h3 style={{ margin: "0 0 5px 0", color: "#1e293b", fontWeight: "600" }}>
-                          📹 {cam.Name}
+                  <div key={cam.id} className={`camera-card ${isWatching ? 'watching' : ''}`}>
+                    <div className="camera-header">
+                      <div className="camera-info">
+                        <h3 className="camera-name">
+                          <span className="camera-icon">📹</span>
+                          {cam.Name}
                         </h3>
-                        <p style={{ margin: 0, color: "#64748b", fontSize: "12px" }}>
-                          ID: {cam.id.substring(0, 8)}...
-                        </p>
+                        <p className="camera-id">ID: {cam.id.substring(0, 8)}...</p>
                       </div>
-                      <div style={{ display: "flex", gap: "8px" }}>
+                      <div className="camera-actions">
                         {!isWatching ? (
-                          <button
-                            onClick={() => joinStream(cam.id)}
-                            style={{ 
-                              padding: "8px 16px", 
-                              borderRadius: "6px", 
-                              cursor: "pointer", 
-                              background: "#3b82f6", 
-                              color: "white",
-                              border: "none",
-                              fontWeight: "600",
-                              fontSize: "14px",
-                              transition: "all 0.2s"
-                            }}
-                            onMouseOver={(e) => e.target.style.background = "#2563eb"}
-                            onMouseOut={(e) => e.target.style.background = "#3b82f6"}
-                          >
+                          <button className="btn-watch" onClick={() => joinStream(cam.id)}>
                             Watch
                           </button>
                         ) : (
-                          <button
-                            onClick={() => stopWatching(cam.id)}
-                            style={{ 
-                              padding: "8px 16px", 
-                              borderRadius: "6px", 
-                              cursor: "pointer", 
-                              background: "#ef4444", 
-                              color: "white",
-                              border: "none",
-                              fontWeight: "600",
-                              fontSize: "14px",
-                              transition: "all 0.2s"
-                            }}
-                            onMouseOver={(e) => e.target.style.background = "#dc2626"}
-                            onMouseOut={(e) => e.target.style.background = "#ef4444"}
-                          >
+                          <button className="btn-stop" onClick={() => stopWatching(cam.id)}>
                             Stop
                           </button>
                         )}
-                        <button
-                          onClick={() => removeCamera(cam.id)}
-                          style={{ 
-                            padding: "8px 12px", 
-                            borderRadius: "6px", 
-                            cursor: "pointer", 
-                            background: "#64748b", 
-                            color: "white",
-                            border: "none",
-                            fontWeight: "600",
-                            fontSize: "14px",
-                            transition: "all 0.2s"
-                          }}
-                          onMouseOver={(e) => e.target.style.background = "#475569"}
-                          onMouseOut={(e) => e.target.style.background = "#64748b"}
-                        >
+                        <button className="btn-remove" onClick={() => removeCamera(cam.id)}>
                           ✕
                         </button>
                       </div>
                     </div>
 
-                    {isWatching && (
-                      <div style={{ marginTop: "15px" }}>
-                        <div style={{ position: "relative" }}>
+                    {isWatching ? (
+                      <div className="video-container">
+                        <div className="video-wrapper">
                           <video
                             ref={activeStreams[cam.id].videoRef}
                             autoPlay
                             playsInline
-                            style={{ 
-                              width: "100%", 
-                              borderRadius: "8px",
-                              background: "#000",
-                              aspectRatio: "16/9",
-                              display: "block"
-                            }}
+                            className="video-player"
                           />
                           <canvas
                             ref={(el) => { canvasRefs.current[cam.id] = el; }}
-                            style={{
-                              position: "absolute",
-                              top: 0,
-                              left: 0,
-                              width: "100%",
-                              height: "100%",
-                              pointerEvents: "none"
-                            }}
+                            className="detection-canvas"
                           />
                         </div>
-                        <div style={{ 
-                          marginTop: "10px", 
-                          padding: "8px", 
-                          background: "#f1f5f9", 
-                          borderRadius: "6px",
-                          display: "flex",
-                          justifyContent: "space-between",
-                          alignItems: "center"
-                        }}>
-                          <span style={{ color: "#ef4444", fontSize: "12px", fontWeight: "700" }}>
-                            🔴 LIVE
-                          </span>
-                          <div>
-                            <span style={{ color: "#22c55e", fontSize: "11px", marginRight: "10px" }}>
+                        <div className="video-status">
+                          <span className="status-live">🔴 LIVE</span>
+                          <div className="detection-counts">
+                            <span className="count-masks">
                               🎭 {detections.filter(d => d.type === 'face_mask').length}
                             </span>
-                            <span style={{ color: "#ef4444", fontSize: "11px" }}>
+                            <span className="count-knives">
                               🔪 {detections.filter(d => d.type === 'knife').length}
                             </span>
                           </div>
                         </div>
                       </div>
-                    )}
-
-                    {!isWatching && (
-                      <div style={{ 
-                        width: "100%", 
-                        aspectRatio: "16/9",
-                        background: "#f1f5f9",
-                        borderRadius: "8px",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        marginTop: "15px",
-                        border: "1px solid #e2e8f0"
-                      }}>
-                        <p style={{ color: "#94a3b8" }}>Click Watch to stream</p>
+                    ) : (
+                      <div className="video-placeholder">
+                        <p>Click Watch to stream</p>
                       </div>
                     )}
                   </div>
@@ -500,69 +374,31 @@ export default function Dashboard() {
         </div>
 
         {/* Right Side - Detection Logs */}
-        <div style={{ width: "350px" }}>
-          <h2 style={{ margin: "0 0 20px 0", color: "#1e293b", fontSize: "24px", fontWeight: "700" }}>
-            📋 Detection Logs
+        <div className="logs-section">
+          <h2 className="section-title">
+            <span className="icon">📋</span>
+            Detection Logs
           </h2>
           
-          <div style={{ 
-            background: "white", 
-            borderRadius: "12px", 
-            padding: "20px",
-            boxShadow: "0 1px 3px rgba(0,0,0,0.1)",
-            maxHeight: "calc(100vh - 180px)",
-            overflowY: "auto"
-          }}>
+          <div className="logs-container">
             {detectionLogs.length === 0 ? (
-              <div style={{ textAlign: "center", padding: "30px 0" }}>
-                <p style={{ color: "#94a3b8", margin: 0 }}>No detections yet</p>
+              <div className="logs-empty">
+                <p>No detections yet</p>
               </div>
             ) : (
-              <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+              <div className="logs-list">
                 {detectionLogs.map(log => (
-                  <div
-                    key={log.id}
-                    style={{
-                      padding: "12px",
-                      borderRadius: "8px",
-                      background: log.isAlert ? "#fee2e2" : "#dcfce7",
-                      border: `1px solid ${log.isAlert ? "#fecaca" : "#bbf7d0"}`
-                    }}
-                  >
-                    <div style={{ 
-                      display: "flex", 
-                      justifyContent: "space-between", 
-                      marginBottom: "5px" 
-                    }}>
-                      <span style={{ 
-                        color: log.isAlert ? "#dc2626" : "#16a34a", 
-                        fontSize: "12px",
-                        fontWeight: "700"
-                      }}>
+                  <div key={log.id} className={`log-item ${log.isAlert ? 'alert' : 'normal'}`}>
+                    <div className="log-header">
+                      <span className="log-badge">
                         {log.isAlert ? "⚠️ ALERT" : "✓ DETECTED"}
                       </span>
-                      <span style={{ 
-                        color: log.isAlert ? "#991b1b" : "#15803d", 
-                        fontSize: "11px" 
-                      }}>
-                        {log.timestamp}
-                      </span>
+                      <span className="log-time">{log.timestamp}</span>
                     </div>
-                    <p style={{ 
-                      margin: "5px 0 0 0", 
-                      color: log.isAlert ? "#dc2626" : "#16a34a",
-                      fontSize: "13px",
-                      fontWeight: "600"
-                    }}>
+                    <p className="log-detection">
                       {log.detectionType === 'knife' ? '🔪' : '🎭'} {log.className}
                     </p>
-                    <p style={{ 
-                      margin: "3px 0 0 0", 
-                      color: log.isAlert ? "#991b1b" : "#15803d",
-                      fontSize: "11px"
-                    }}>
-                      Camera: {log.cameraName}
-                    </p>
+                    <p className="log-camera">Camera: {log.cameraName}</p>
                   </div>
                 ))}
               </div>
@@ -571,135 +407,53 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* Add Camera Popup */}
+      {/* Add Camera Modal */}
       {showPopup && (
-        <div style={{
-          position: "fixed",
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          background: "rgba(0, 0, 0, 0.5)",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          zIndex: 1000
-        }}>
-          <div style={{
-            background: "white",
-            borderRadius: "16px",
-            padding: "30px",
-            width: "90%",
-            maxWidth: "500px",
-            boxShadow: "0 20px 60px rgba(0, 0, 0, 0.3)"
-          }}>
-            <h3 style={{ margin: "0 0 20px 0", color: "#1e293b", fontSize: "24px", fontWeight: "700" }}>
-              Add Camera
-            </h3>
+        <div className="modal-overlay">
+          <div className="modal-content">
+            <h3 className="modal-title">Add Camera</h3>
             
-            <div style={{ marginBottom: "20px" }}>
-              <label style={{ display: "block", marginBottom: "8px", color: "#475569", fontSize: "14px", fontWeight: "600" }}>
-                Camera Name
-              </label>
+            <div className="form-group">
+              <label className="form-label">Camera Name</label>
               <input
                 type="text"
+                className="form-input"
                 value={popupCameraName}
                 onChange={(e) => setPopupCameraName(e.target.value)}
                 placeholder="Enter camera name"
-                style={{
-                  width: "100%",
-                  padding: "12px",
-                  borderRadius: "8px",
-                  border: "2px solid #e2e8f0",
-                  fontSize: "16px",
-                  outline: "none",
-                  transition: "border 0.2s",
-                  boxSizing: "border-box"
-                }}
-                onFocus={(e) => e.target.style.borderColor = "#3b82f6"}
-                onBlur={(e) => e.target.style.borderColor = "#e2e8f0"}
               />
             </div>
 
-            <div style={{ marginBottom: "20px" }}>
-              <label style={{ display: "block", marginBottom: "8px", color: "#475569", fontSize: "14px", fontWeight: "600" }}>
-                Camera ID
-              </label>
+            <div className="form-group">
+              <label className="form-label">Camera ID</label>
               <input
                 type="text"
+                className="form-input"
                 value={popupCameraId}
                 onChange={(e) => setPopupCameraId(e.target.value)}
                 placeholder="Enter camera ID"
-                style={{
-                  width: "100%",
-                  padding: "12px",
-                  borderRadius: "8px",
-                  border: "2px solid #e2e8f0",
-                  fontSize: "16px",
-                  outline: "none",
-                  transition: "border 0.2s",
-                  boxSizing: "border-box"
-                }}
-                onFocus={(e) => e.target.style.borderColor = "#3b82f6"}
-                onBlur={(e) => e.target.style.borderColor = "#e2e8f0"}
               />
             </div>
 
             {popupError && (
-              <div style={{
-                padding: "12px",
-                background: "#fee2e2",
-                border: "1px solid #fecaca",
-                borderRadius: "8px",
-                marginBottom: "20px"
-              }}>
-                <p style={{ margin: 0, color: "#dc2626", fontSize: "14px" }}>
-                  ⚠️ {popupError}
-                </p>
+              <div className="error-message">
+                <span className="error-icon">⚠️</span>
+                {popupError}
               </div>
             )}
 
-            <div style={{ display: "flex", gap: "10px" }}>
-              <button
-                onClick={handleAddCamera}
-                style={{
-                  flex: 1,
-                  padding: "12px",
-                  background: "#3b82f6",
-                  color: "white",
-                  borderRadius: "8px",
-                  border: "none",
-                  fontSize: "16px",
-                  fontWeight: "600",
-                  cursor: "pointer",
-                  transition: "all 0.2s"
-                }}
-                onMouseOver={(e) => e.target.style.background = "#2563eb"}
-                onMouseOut={(e) => e.target.style.background = "#3b82f6"}
-              >
+            <div className="modal-actions">
+              <button className="btn-modal-primary" onClick={handleAddCamera}>
                 Add Camera
               </button>
-              <button
+              <button 
+                className="btn-modal-secondary" 
                 onClick={() => {
                   setShowPopup(false);
                   setPopupCameraName("");
                   setPopupCameraId("");
                   setPopupError("");
                 }}
-                style={{
-                  flex: 1,
-                  padding: "12px",
-                  background: "#f1f5f9",
-                  color: "#64748b",
-                  borderRadius: "8px",
-                  border: "none",
-                  fontSize: "16px",
-                  fontWeight: "600",
-                  cursor: "pointer",
-                  transition: "all 0.2s"
-                }}
-                onMouseOver={(e) => e.target.style.background = "#e2e8f0"}
-                onMouseOut={(e) => e.target.style.background = "#f1f5f9"}
               >
                 Cancel
               </button>

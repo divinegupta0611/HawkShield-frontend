@@ -12,20 +12,20 @@ const Home = () => {
   const videoRef = useRef(null);
   const navigate = useNavigate();
   // Open modal & preview webcam
-  const openCameraModal = async () => {
-    setShowCameraModal(true);
+  // const openCameraModal = async () => {
+  //   setShowCameraModal(true);
 
-    try {
-      const userStream = await navigator.mediaDevices.getUserMedia({ video: true });
-      setStream(userStream);
-      if (videoRef.current) {
-        videoRef.current.srcObject = userStream;
-      }
-    } catch (error) {
-      console.error("Camera access error:", error);
-      alert("Unable to access camera.");
-    }
-  };
+  //   try {
+  //     const userStream = await navigator.mediaDevices.getUserMedia({ video: true });
+  //     setStream(userStream);
+  //     if (videoRef.current) {
+  //       videoRef.current.srcObject = userStream;
+  //     }
+  //   } catch (error) {
+  //     console.error("Camera access error:", error);
+  //     alert("Unable to access camera.");
+  //   }
+  // };
 
   // Save camera (ID + name)
   const saveCamera = async () => {
@@ -107,11 +107,11 @@ const Home = () => {
               <p>Get notified immediately when threats are detected</p>
             </div>
           </div>
-                    {isLoggedIn && (
+                    {/* {isLoggedIn && (
             <button className="secondary-button" onClick={openCameraModal}>
               Add Camera Now
             </button>
-          )}
+          )} */}
         </div>
       </section>
       {/* Camera Add Modal */}

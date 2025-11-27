@@ -1,6 +1,7 @@
 import React, { useRef, useState, useEffect } from "react";
 import { supabase } from "../SupabaseClient";
 import NavBar from "../components/NavBar";
+import "../style/StreamCSS.css";
 
 export default function Stream() {
   const videoRef = useRef(null);
@@ -34,31 +35,25 @@ export default function Stream() {
     canvas.width = video.videoWidth;
     canvas.height = video.videoHeight;
     
-    // Clear canvas
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     
-    // Draw each detection
     detections.forEach(det => {
       const [x1, y1, x2, y2] = det.bbox;
       const width = x2 - x1;
       const height = y2 - y1;
       
-      // Choose color based on detection type
       const color = det.type === 'knife' ? '#ef4444' : '#22c55e';
       
-      // Draw rectangle
       ctx.strokeStyle = color;
       ctx.lineWidth = 3;
       ctx.strokeRect(x1, y1, width, height);
       
-      // Draw label background
       const label = `${det.class} ${(det.confidence * 100).toFixed(0)}%`;
       ctx.font = '16px Arial';
       const textWidth = ctx.measureText(label).width;
       ctx.fillStyle = color;
       ctx.fillRect(x1, y1 - 25, textWidth + 10, 25);
       
-      // Draw label text
       ctx.fillStyle = 'white';
       ctx.fillText(label, x1 + 5, y1 - 7);
     });
@@ -75,10 +70,8 @@ export default function Stream() {
     const ctx = canvas.getContext('2d');
     ctx.drawImage(video, 0, 0);
     
-    // Convert to base64
     const frameData = canvas.toDataURL('image/jpeg', 0.8);
     
-    // Send to backend with camera name
     wsRef.current.send(JSON.stringify({
       action: "video_frame",
       frame: frameData,
@@ -97,7 +90,6 @@ export default function Stream() {
         camera_id: cameraId 
       }));
       
-      // Start sending frames for detection (every 500ms)
       detectionIntervalRef.current = setInterval(sendFrameForDetection, 500);
     };
 
@@ -110,7 +102,6 @@ export default function Stream() {
         console.log("Streamer channel:", data.channel);
       }
 
-      // Handle detections from backend
       if (data.action === "detections") {
         setDetections(data.detections);
         drawBoundingBoxes(data.detections);
@@ -243,7 +234,6 @@ export default function Stream() {
   // ---------------- Stop Stream ----------------
   const stopStream = async () => {
     try {
-      // Stop detection interval
       if (detectionIntervalRef.current) {
         clearInterval(detectionIntervalRef.current);
       }
@@ -301,110 +291,81 @@ export default function Stream() {
   }, []);
 
   return (
-    <div style={{ padding: "30px", textAlign: "center", minHeight: "100vh", background: "#1a1a1a" }}>
+    <div className="stream-container">
       {!isStreaming && <NavBar />}
 
       {!isStreaming && (
-        <div style={{ maxWidth: "500px", margin: "50px auto" }}>
-          <h2 style={{ color: "white", marginBottom: "30px" }}>Start Your Camera Stream</h2>
-          <input
-            value={cameraName}
-            onChange={(e) => setCameraName(e.target.value)}
-            placeholder="Enter Camera Name"
-            style={{ 
-              padding: "12px", 
-              width: "100%", 
-              marginBottom: "20px", 
-              borderRadius: "8px", 
-              border: "1px solid #555",
-              background: "#2a2a2a",
-              color: "white",
-              fontSize: "16px"
-            }}
-          />
-          <button
-            onClick={startStream}
-            style={{ 
-              padding: "12px 30px", 
-              background: "#22c55e", 
-              color: "white", 
-              borderRadius: "8px", 
-              cursor: "pointer",
-              border: "none",
-              fontSize: "16px",
-              fontWeight: "bold",
-              width: "100%"
-            }}
-          >
-            Start Streaming
-          </button>
+        <div className="stream-setup">
+          <div className="setup-card">
+            <h2 className="setup-title">Start Your Camera Stream</h2>
+            <div className="setup-icon">📹</div>
+            <input
+              value={cameraName}
+              onChange={(e) => setCameraName(e.target.value)}
+              placeholder="Enter Camera Name"
+              className="setup-input"
+            />
+            <button onClick={startStream} className="btn-start-stream">
+              <span className="btn-icon">▶</span>
+              Start Streaming
+            </button>
+          </div>
         </div>
       )}
 
       {isStreaming && (
-        <div style={{ marginTop: "20px" }}>
-          <h3 style={{ color: "white", marginBottom: "10px" }}>
-            📹 {cameraName}
-          </h3>
-          <p style={{ color: "#888", marginBottom: "20px", fontSize: "14px" }}>
-            Camera ID: {cameraId} | Channel: {streamerChannel}
-          </p>
+        <div className="streaming-view">
+          <div className="stream-header">
+            <h3 className="stream-title">
+              <span className="title-icon">📹</span>
+              {cameraName}
+            </h3>
+            <div className="stream-info">
+              <span className="info-item">
+                <span className="info-label">Camera ID:</span> {cameraId}
+              </span>
+              <span className="info-divider">|</span>
+              <span className="info-item">
+                <span className="info-label">Channel:</span> {streamerChannel}
+              </span>
+            </div>
+          </div>
           
-          {/* Detection Stats */}
-          <div style={{ 
-            marginBottom: "20px", 
-            padding: "10px", 
-            background: "#2a2a2a", 
-            borderRadius: "8px",
-            display: "inline-block"
-          }}>
-            <span style={{ color: "#22c55e", marginRight: "20px" }}>
-              🎭 Masks: {detections.filter(d => d.type === 'face_mask').length}
-            </span>
-            <span style={{ color: "#ef4444" }}>
-              🔪 Knives: {detections.filter(d => d.type === 'knife').length}
-            </span>
+          <div className="detection-stats">
+            <div className="stat-item stat-masks">
+              <span className="stat-icon">🎭</span>
+              <span className="stat-label">Masks:</span>
+              <span className="stat-value">{detections.filter(d => d.type === 'face_mask').length}</span>
+            </div>
+            <div className="stat-item stat-knives">
+              <span className="stat-icon">🔪</span>
+              <span className="stat-label">Knives:</span>
+              <span className="stat-value">{detections.filter(d => d.type === 'knife').length}</span>
+            </div>
           </div>
 
-          <div style={{ display: "flex", justifyContent: "center", marginBottom: "20px", position: "relative" }}>
-            <video
-              ref={videoRef}
-              autoPlay
-              muted
-              playsInline
-              style={{ 
-                width: "80%", 
-                maxWidth: "800px",
-                borderRadius: "12px", 
-                border: "3px solid #22c55e",
-                background: "#000",
-                display: "block"
-              }}
-            />
-            <canvas
-              ref={canvasRef}
-              style={{
-                position: "absolute",
-                width: "80%",
-                maxWidth: "800px",
-                pointerEvents: "none"
-              }}
-            />
+          <div className="video-section">
+            <div className="video-wrapper">
+              <video
+                ref={videoRef}
+                autoPlay
+                muted
+                playsInline
+                className="stream-video"
+              />
+              <canvas
+                ref={canvasRef}
+                className="detection-overlay"
+              />
+              <div className="live-indicator">
+                <span className="live-dot"></span>
+                LIVE
+              </div>
+            </div>
           </div>
           
-          <button
-            onClick={stopStream}
-            style={{ 
-              padding: "12px 30px", 
-              background: "#ef4444", 
-              color: "white", 
-              borderRadius: "8px", 
-              cursor: "pointer",
-              border: "none",
-              fontSize: "16px",
-              fontWeight: "bold"
-            }}
-          >
+          <button onClick={stopStream} className="btn-stop-stream">
+            <span className="btn-icon">⬛</span>
             Stop Streaming
           </button>
         </div>
