@@ -5,6 +5,7 @@ import { supabase } from "../SupabaseClient";
 
 export default function NavBar() {
   const [user, setUser] = useState(null);
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
 
   useEffect(() => {
     const savedUser = localStorage.getItem("hawkshield_user");
@@ -23,6 +24,9 @@ export default function NavBar() {
       localStorage.clear();
       setUser(null);
       
+      // Close menu
+      setIsMenuOpen(false);
+      
       // Redirect to home
       window.location.href = "/";
     } catch (error) {
@@ -31,6 +35,7 @@ export default function NavBar() {
       localStorage.removeItem("hawkshield_user");
       
       setUser(null);
+      setIsMenuOpen(false);
       window.location.href = "/";
     }
   };
@@ -50,20 +55,38 @@ export default function NavBar() {
     return "?";
   };
 
+  const toggleMenu = () => {
+    setIsMenuOpen(!isMenuOpen);
+  };
+
+  const closeMenu = () => {
+    setIsMenuOpen(false);
+  };
+
   return (
     <div>
       <nav className="navbar">
         <div className="navbar-content">
           <div className="logo">HawkShield</div>
 
-          <ul className="nav-links">
-            <li><Link to="/">Home</Link></li>
-            <li><Link to="/about">About</Link></li>
-            <li><Link to="/contact">Contact Us</Link></li>
-            <li><Link to="/stream">Stream</Link></li>
-            <li><Link to="/dashboard">Dashboard</Link></li>
+          <button className="hamburger" onClick={toggleMenu} aria-label="Toggle menu">
+            <span></span>
+            <span></span>
+            <span></span>
+          </button>
+
+          <ul className={`nav-links ${isMenuOpen ? 'active' : ''}`}>
+            <li><Link to="/" onClick={closeMenu}>Home</Link></li>
+            <li><Link to="/about" onClick={closeMenu}>About</Link></li>
+            <li><Link to="/contact" onClick={closeMenu}>Contact Us</Link></li>
+            {user && (
+              <>
+                <li><Link to="/stream" onClick={closeMenu}>Stream</Link></li>
+                <li><Link to="/dashboard" onClick={closeMenu}>Dashboard</Link></li>
+              </>
+            )}
             {!user ? (
-              <li><Link to="/signup">Signup</Link></li>
+              <li><Link to="/signup" onClick={closeMenu}>Signup</Link></li>
             ) : (
               <li onClick={handleLogout} className="logout-btn">Logout</li>
             )}

@@ -40,16 +40,19 @@
 .nav-links a:hover {
   color: #93c5fd;
 }
-.logout-btn{
+
+.logout-btn {
   color: white;
   text-decoration: none;
   transition: color 0.3s;
   font-weight: 500;
 }
+
 .logout-btn:hover {
   color: #93c5fd;
   cursor: pointer;
 }
+
 .user-circle {
   width: 45px;
   height: 45px;
@@ -67,4 +70,88 @@
 
 .user-circle:hover {
   background-color: #2563eb;
+}
+
+/* Hamburger Menu */
+.hamburger {
+  display: none;
+  flex-direction: column;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  z-index: 1001;
+}
+
+.hamburger span {
+  width: 25px;
+  height: 3px;
+  background-color: white;
+  margin: 3px 0;
+  transition: 0.3s;
+  border-radius: 3px;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+  .navbar-content {
+    position: relative;
+  }
+
+  .hamburger {
+    display: flex;
+    order: 1;
+  }
+
+  .logo {
+    order: 2;
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+  }
+
+  .user-circle {
+    order: 3;
+    position: relative;
+    z-index: 1001;
+  }
+
+  .nav-links {
+    position: fixed;
+    left: -100%;
+    top: 70px;
+    flex-direction: column;
+    background-color: #1e3a8a;
+    width: 100%;
+    text-align: center;
+    transition: 0.3s;
+    box-shadow: 0 10px 27px rgba(0, 0, 0, 0.05);
+    padding: 2rem 0;
+    gap: 1.5rem;
+    order: 4;
+  }
+
+  .nav-links.active {
+    left: 0;
+  }
+
+  .nav-links li {
+    margin: 0;
+  }
+}
+
+@media (max-width: 480px) {
+  .logo {
+    font-size: 1.4rem;
+  }
+
+  .user-circle {
+    width: 40px;
+    height: 40px;
+    font-size: 1rem;
+  }
+
+  .navbar {
+    padding: 1rem 1rem;
+  }
 }
