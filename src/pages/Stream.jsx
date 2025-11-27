@@ -4,16 +4,18 @@ import { supabase } from "../SupabaseClient";
 
 export default function Stream() {
   const videoRef = useRef(null);
+  const canvasRef = useRef(null);
   const [cameraName, setCameraName] = useState("");
   const [cameraId, setCameraId] = useState(null);
   const [isStreaming, setIsStreaming] = useState(false);
   const [stream, setStream] = useState(null);
   const [streamerChannel, setStreamerChannel] = useState(null);
+  const [detections, setDetections] = useState([]);
 
-  const viewersRef = useRef({}); // track peerConnections per viewer
+  const viewersRef = useRef({});
   const wsRef = useRef(null);
+  const detectionIntervalRef = useRef(null);
   
-  // ---------------- WebRTC Configuration ----------------
   const rtcConfig = {
     iceServers: [
       { urls: "stun:stun.l.google.com:19302" },
@@ -21,106 +23,157 @@ export default function Stream() {
     ]
   };
 
-  // ---------------- WebRTC Setup ----------------
-const startWebRTC = (cameraId, mediaStream) => {
-  wsRef.current = new WebSocket("ws://localhost:8000/ws/camera/");
+  // ---------------- Draw Bounding Boxes ----------------
+  const drawBoundingBoxes = (detections) => {
+    const canvas = canvasRef.current;
+    const video = videoRef.current;
+    
+    if (!canvas || !video) return;
 
-  wsRef.current.onopen = () => {
-    console.log("WebSocket connected");
-    // Register as streamer
-    wsRef.current.send(JSON.stringify({ 
-      action: "streamer_join", 
-      camera_id: cameraId 
+    const ctx = canvas.getContext('2d');
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    
+    // Clear canvas
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    
+    // Draw each detection
+    detections.forEach(det => {
+      const [x1, y1, x2, y2] = det.bbox;
+      const width = x2 - x1;
+      const height = y2 - y1;
+      
+      // Choose color based on detection type
+      const color = det.type === 'knife' ? '#ef4444' : '#22c55e';
+      
+      // Draw rectangle
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 3;
+      ctx.strokeRect(x1, y1, width, height);
+      
+      // Draw label background
+      const label = `${det.class} ${(det.confidence * 100).toFixed(0)}%`;
+      ctx.font = '16px Arial';
+      const textWidth = ctx.measureText(label).width;
+      ctx.fillStyle = color;
+      ctx.fillRect(x1, y1 - 25, textWidth + 10, 25);
+      
+      // Draw label text
+      ctx.fillStyle = 'white';
+      ctx.fillText(label, x1 + 5, y1 - 7);
+    });
+  };
+
+  // ---------------- Capture and Send Frame for Detection ----------------
+  const sendFrameForDetection = () => {
+    const video = videoRef.current;
+    if (!video || !wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
+
+    const canvas = document.createElement('canvas');
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(video, 0, 0);
+    
+    // Convert to base64
+    const frameData = canvas.toDataURL('image/jpeg', 0.8);
+    
+    // Send to backend
+    wsRef.current.send(JSON.stringify({
+      action: "video_frame",
+      frame: frameData
     }));
   };
 
-  wsRef.current.onmessage = async (message) => {
-    const data = JSON.parse(message.data);
-    console.log("Received message:", data);
+  // ---------------- WebRTC Setup ----------------
+  const startWebRTC = (cameraId, mediaStream) => {
+    wsRef.current = new WebSocket("ws://localhost:8000/ws/camera/");
 
-    // Store streamer channel
-    if (data.action === "streamer_joined") {
-      setStreamerChannel(data.channel);
-      console.log("Streamer channel:", data.channel);
-    }
-
-    // Viewer joined → create offer
-    if (data.action === "viewer_joined") {
-      const viewerChannel = data.viewer;
-      console.log("Viewer joined:", viewerChannel);
+    wsRef.current.onopen = () => {
+      console.log("WebSocket connected");
+      wsRef.current.send(JSON.stringify({ 
+        action: "streamer_join", 
+        camera_id: cameraId 
+      }));
       
-      const pc = new RTCPeerConnection(rtcConfig);
-      viewersRef.current[viewerChannel] = pc;
+      // Start sending frames for detection (every 500ms)
+      detectionIntervalRef.current = setInterval(sendFrameForDetection, 500);
+    };
 
-      // Add tracks to peer connection - USE THE PASSED STREAM
-      if (mediaStream) {
-        mediaStream.getTracks().forEach((track) => {
-          pc.addTrack(track, mediaStream);
-          console.log("Added track:", track.kind);
-        });
-      } else {
-        console.error("No media stream available!");
+    wsRef.current.onmessage = async (message) => {
+      const data = JSON.parse(message.data);
+      console.log("Received message:", data);
+
+      if (data.action === "streamer_joined") {
+        setStreamerChannel(data.channel);
+        console.log("Streamer channel:", data.channel);
       }
 
-      // Handle ICE candidates
-      pc.onicecandidate = (event) => {
-        if (event.candidate) {
-          console.log("Sending ICE candidate to viewer:", viewerChannel);
-          wsRef.current.send(JSON.stringify({ 
-            action: "ice-candidate", 
-            target: viewerChannel, 
-            candidate: event.candidate 
-          }));
+      // Handle detections from backend
+      if (data.action === "detections") {
+        setDetections(data.detections);
+        drawBoundingBoxes(data.detections);
+      }
+
+      if (data.action === "viewer_joined") {
+        const viewerChannel = data.viewer;
+        console.log("Viewer joined:", viewerChannel);
+        
+        const pc = new RTCPeerConnection(rtcConfig);
+        viewersRef.current[viewerChannel] = pc;
+
+        if (mediaStream) {
+          mediaStream.getTracks().forEach((track) => {
+            pc.addTrack(track, mediaStream);
+            console.log("Added track:", track.kind);
+          });
         }
-      };
 
-      // Monitor connection state
-      pc.onconnectionstatechange = () => {
-        console.log("Connection state with viewer:", pc.connectionState);
-      };
+        pc.onicecandidate = (event) => {
+          if (event.candidate) {
+            wsRef.current.send(JSON.stringify({ 
+              action: "ice-candidate", 
+              target: viewerChannel, 
+              candidate: event.candidate 
+            }));
+          }
+        };
 
-      pc.oniceconnectionstatechange = () => {
-        console.log("ICE connection state:", pc.iceConnectionState);
-      };
+        pc.onconnectionstatechange = () => {
+          console.log("Connection state with viewer:", pc.connectionState);
+        };
 
-      // Create and send offer
-      try {
-        const offer = await pc.createOffer();
-        await pc.setLocalDescription(offer);
-        console.log("Created offer for viewer:", viewerChannel);
-
-        wsRef.current.send(JSON.stringify({ 
-          action: "offer", 
-          target: viewerChannel, 
-          sdp: offer 
-        }));
-      } catch (err) {
-        console.error("Error creating offer:", err);
+        try {
+          const offer = await pc.createOffer();
+          await pc.setLocalDescription(offer);
+          wsRef.current.send(JSON.stringify({ 
+            action: "offer", 
+            target: viewerChannel, 
+            sdp: offer 
+          }));
+        } catch (err) {
+          console.error("Error creating offer:", err);
+        }
       }
-    }
 
-      // Receive answer from viewer
       if (data.action === "answer") {
         const senderChannel = data.sender;
         const pc = viewersRef.current[senderChannel];
         if (pc) {
           try {
             await pc.setRemoteDescription(new RTCSessionDescription(data.sdp));
-            console.log("Set remote description from viewer:", senderChannel);
           } catch (err) {
             console.error("Error setting remote description:", err);
           }
         }
       }
 
-      // ICE candidate from viewer
       if (data.action === "ice-candidate") {
         const senderChannel = data.sender;
         const pc = viewersRef.current[senderChannel];
         if (pc && data.candidate) {
           try {
             await pc.addIceCandidate(new RTCIceCandidate(data.candidate));
-            console.log("Added ICE candidate from viewer:", senderChannel);
           } catch (err) {
             console.error("Error adding ICE candidate:", err);
           }
@@ -134,87 +187,79 @@ const startWebRTC = (cameraId, mediaStream) => {
 
     wsRef.current.onclose = () => {
       console.log("WebSocket closed");
+      if (detectionIntervalRef.current) {
+        clearInterval(detectionIntervalRef.current);
+      }
     };
   };
 
   // ---------------- Start Stream ----------------
-const startStream = async () => {
-  if (!cameraName.trim()) {
-    alert("Please enter a camera name");
-    return;
-  }
+  const startStream = async () => {
+    if (!cameraName.trim()) {
+      alert("Please enter a camera name");
+      return;
+    }
 
-  try {
-    // ---------------- Start webcam FIRST ----------------
-    const mediaStream = await navigator.mediaDevices.getUserMedia({ 
-  video: { 
-    width: { ideal: 1280 },
-    height: { ideal: 720 }
-  }, 
-  audio: false 
-});
+    try {
+      const mediaStream = await navigator.mediaDevices.getUserMedia({ 
+        video: { 
+          width: { ideal: 1280 },
+          height: { ideal: 720 }
+        }, 
+        audio: false 
+      });
 
-// ADD THESE DEBUG LINES
-console.log("Media stream obtained:", mediaStream);
-console.log("Video tracks:", mediaStream.getVideoTracks());
-console.log("Track settings:", mediaStream.getVideoTracks()[0]?.getSettings());
+      console.log("Media stream obtained:", mediaStream);
+      setStream(mediaStream);
+      setIsStreaming(true);
 
-setStream(mediaStream);
-setIsStreaming(true);
+      setTimeout(() => {
+        if (videoRef.current) {
+          videoRef.current.srcObject = mediaStream;
+          videoRef.current.play().catch(err => {
+            console.error("Error playing video:", err);
+          });
+        }
+      }, 100);
 
-// Attach video to element - WAIT FOR NEXT RENDER
-setTimeout(() => {
-  if (videoRef.current) {
-    videoRef.current.srcObject = mediaStream;
-    console.log("Video element srcObject set:", videoRef.current.srcObject);
-    
-    videoRef.current.play().catch(err => {
-      console.error("Error playing video:", err);
-    });
-  } else {
-    console.error("videoRef.current is null!");
-  }
-}, 100);
+      const { data, error } = await supabase
+        .from("Cameras")
+        .insert([{ Name: cameraName }])
+        .select()
+        .single();
 
-    // ---------------- Insert camera in Supabase ----------------
-    const { data, error } = await supabase
-      .from("Cameras")
-      .insert([{ Name: cameraName }])
-      .select()
-      .single();
+      if (error) throw error;
+      setCameraId(data.id);
+      console.log("Camera created with ID:", data.id);
 
-    if (error) throw error;
-    setCameraId(data.id);
-    console.log("Camera created with ID:", data.id);
-
-    // ---------------- Start WebRTC with the stream ----------------
-    startWebRTC(data.id, mediaStream);
-  } catch (err) {
-    console.error("Error starting stream:", err);
-    alert("Error starting stream: " + err.message);
-  }
-};
+      startWebRTC(data.id, mediaStream);
+    } catch (err) {
+      console.error("Error starting stream:", err);
+      alert("Error starting stream: " + err.message);
+    }
+  };
 
   // ---------------- Stop Stream ----------------
   const stopStream = async () => {
     try {
-      // ---------------- Close all peer connections ----------------
+      // Stop detection interval
+      if (detectionIntervalRef.current) {
+        clearInterval(detectionIntervalRef.current);
+      }
+
       Object.values(viewersRef.current).forEach(pc => {
         pc.close();
       });
       viewersRef.current = {};
 
-      // ---------------- Stop webcam ----------------
       if (stream) {
         stream.getTracks().forEach((track) => track.stop());
       }
 
-      // ---------------- Close WebSocket ----------------
       if (wsRef.current) {
         wsRef.current.close();
       }
 
-      // ---------------- Delete camera from Supabase ----------------
       if (cameraId) {
         const { error } = await supabase
           .from("Cameras")
@@ -228,6 +273,7 @@ setTimeout(() => {
       setCameraName("");
       setCameraId(null);
       setStreamerChannel(null);
+      setDetections([]);
 
       console.log("Stream stopped");
     } catch (err) {
@@ -235,17 +281,16 @@ setTimeout(() => {
       alert("Error stopping stream: " + err.message);
     }
   };
-// ---------------- Attach stream to video element ----------------
-useEffect(() => {
-  if (stream && videoRef.current) {
-    console.log("Attaching stream to video element");
-    videoRef.current.srcObject = stream;
-    videoRef.current.play().catch(err => {
-      console.error("Error playing video:", err);
-    });
-  }
-}, [stream]);
-  // ---------------- Cleanup on unmount ----------------
+
+  useEffect(() => {
+    if (stream && videoRef.current) {
+      videoRef.current.srcObject = stream;
+      videoRef.current.play().catch(err => {
+        console.error("Error playing video:", err);
+      });
+    }
+  }, [stream]);
+
   useEffect(() => {
     return () => {
       if (isStreaming) {
@@ -303,28 +348,49 @@ useEffect(() => {
           <p style={{ color: "#888", marginBottom: "20px", fontSize: "14px" }}>
             Camera ID: {cameraId} | Channel: {streamerChannel}
           </p>
-          <div style={{ display: "flex", justifyContent: "center", marginBottom: "20px" }}>
-            <video
-  ref={videoRef}
-  autoPlay
-  muted
-  playsInline
-  onLoadedMetadata={() => {
-    console.log("Video metadata loaded");
-    console.log("Video dimensions:", videoRef.current.videoWidth, "x", videoRef.current.videoHeight);
-  }}
-  onCanPlay={() => {
-    console.log("Video can play");
-  }}
-  style={{ 
-    width: "80%", 
-    maxWidth: "800px",
-    borderRadius: "12px", 
-    border: "3px solid #22c55e",
-    background: "#000"
-  }}
-/>
+          
+          {/* Detection Stats */}
+          <div style={{ 
+            marginBottom: "20px", 
+            padding: "10px", 
+            background: "#2a2a2a", 
+            borderRadius: "8px",
+            display: "inline-block"
+          }}>
+            <span style={{ color: "#22c55e", marginRight: "20px" }}>
+              🎭 Masks: {detections.filter(d => d.type === 'face_mask').length}
+            </span>
+            <span style={{ color: "#ef4444" }}>
+              🔪 Knives: {detections.filter(d => d.type === 'knife').length}
+            </span>
           </div>
+
+          <div style={{ display: "flex", justifyContent: "center", marginBottom: "20px", position: "relative" }}>
+            <video
+              ref={videoRef}
+              autoPlay
+              muted
+              playsInline
+              style={{ 
+                width: "80%", 
+                maxWidth: "800px",
+                borderRadius: "12px", 
+                border: "3px solid #22c55e",
+                background: "#000",
+                display: "block"
+              }}
+            />
+            <canvas
+              ref={canvasRef}
+              style={{
+                position: "absolute",
+                width: "80%",
+                maxWidth: "800px",
+                pointerEvents: "none"
+              }}
+            />
+          </div>
+          
           <button
             onClick={stopStream}
             style={{ 
