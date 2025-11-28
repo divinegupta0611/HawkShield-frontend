@@ -48,7 +48,7 @@ const About = () => {
 
             <div className="overview-card">
               <span className="overview-icon">⚡</span>
-              <h3>Instant Classification</h3>
+              <h3>Instant Detection</h3>
               <p>
                 Immediately identifies potential threats and classifies them based on 
                 severity and type for rapid response.

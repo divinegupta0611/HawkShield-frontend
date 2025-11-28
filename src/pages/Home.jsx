@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from "react-router-dom";
+import { Link } from 'react-router-dom';
 import '../style/HomeCSS.css';
 import NavBar from '../components/NavBar.jsx';
 const Home = () => {
@@ -81,7 +82,7 @@ const Home = () => {
         <div className="hero-content">
           <h1>Advanced Surveillance & Threat Detection</h1>
           <p>Protecting what matters most with AI-powered security solutions</p>
-          <button className="cta-button">Get Started</button>
+          <button className="cta-button"><Link to="/about" className='link1'>Get Started</Link></button>
         </div>
       </section>
 
